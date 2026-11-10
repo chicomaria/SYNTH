@@ -18,7 +18,7 @@ const NR = { noRand: true }; // entradas que o patch aleatório evita
 
 export const TYPES = {
   M: {
-    name: 'PULSO M', sub: 'melódico · arquitetura do Mother-32', hasRun: true, custom: 'mseq',
+    name: 'PULSO M', sub: 'melódico · arquitetura do Mother-32', hasRun: true, custom: 'mseq', customWide: true,
     controls: [
       H('VCO'), K('freq', 'FREQUENCY', 0.5, { bipolar: true, size: 'lg', r: [0.3, 0.7] }), K('pw', 'PULSE WIDTH', 0.5),
       S('wave', 'VCO WAVE', ['SAW', 'PULSE']), K('mix', 'MIX', 0, { r: [0, 0.4] }), K('glide', 'GLIDE', 0, { r: [0, 0.4] }),
@@ -267,6 +267,62 @@ export const PRESETS = [
     }),
   },
 ];
+
+// Patches clássicos: técnicas conhecidas destas máquinas, montadas à mão (não são cópias dos livros de patches)
+PRESETS.push(
+  {
+    name: 'Baixo PWM', classic: true, about: 'M: LFO na largura de pulso e filtro a seguir o teclado (KB → VCF CUTOFF)',
+    make: () => ({
+      mods: [mod('M', 'm1', { wave: 1, vcoModSrc: 1, vcoModDest: 0, vcoModAmt: 0.7, lfoRate: 0.3, cutoff: 0.4, res: 0.35, vcfModAmt: 0.45, decay: 0.45 })],
+      cables: [['m1', 'kb', 'm1', 'cutoff']], fx: { ...FX },
+    }),
+  },
+  {
+    name: 'Acid com glide', classic: true, about: 'M: serra, ressonância alta, envelope curto no filtro e glide',
+    make: () => ({
+      mods: [mod('M', 'm1', { wave: 0, cutoff: 0.3, res: 0.78, vcfModAmt: 0.6, decay: 0.3, glide: 0.25, gateLen: 0.7, tempo: 0.65 })],
+      cables: [], fx: { ...FX },
+    }),
+  },
+  {
+    name: 'Bombo e tom', classic: true, about: 'D: bombo com envelope de afinação; a velocidade alonga o decay (VELOCITY → VCA DECAY)',
+    make: () => ({
+      mods: [mod('D', 'd1', {
+        vco1Freq: 0.3, vco1Eg: 0.8, vcoDecay: 0.3, vco1Lvl: 1, vco2Lvl: 0, noiseLvl: 0.05, cutoff: 0.45, vcfEg: 0.65, vcfDecay: 0.3,
+        vcaDecay: 0.3, seqPitch: 1, vel1: 1, vel2: 0, vel3: 0.5, vel4: 0, vel5: 1, vel6: 0, vel7: 0.6, vel8: 0.3,
+      })],
+      cables: [['d1', 'velOut', 'd1', 'vcaDecay']], fx: { ...FX },
+    }),
+  },
+  {
+    name: 'Percussão FM', classic: true, about: 'D: hard sync e FM 1→2 aberta pelo envelope (VCO EG → 1→2 FM AMT)',
+    make: () => ({
+      mods: [mod('D', 'd1', {
+        vco1Freq: 0.6, vco2Freq: 0.68, vco1Wave: 1, vco2Wave: 1, vco2Lvl: 0.7, sync: 1, fm: 0.15, vco1Eg: 0.55, vco2Eg: 0.7,
+        vcoDecay: 0.3, cutoff: 0.65, res: 0.45, vcfDecay: 0.3, vcaDecay: 0.32, noiseLvl: 0,
+        pitch1: 0.5, pitch2: 0.56, pitch3: 0.44, pitch4: 0.6, pitch5: 0.5, pitch6: 0.42, pitch7: 0.58, pitch8: 0.53,
+      })],
+      cables: [['d1', 'vcoEg', 'd1', 'fmAmt']], fx: { ...FX },
+    }),
+  },
+  {
+    name: 'M toca D', classic: true, about: 'M + D: ASSIGN → ADV/CLOCK para sincronizar e KB → VCO 1 CV para a percussão seguir a melodia',
+    make: () => ({
+      mods: [mod('M', 'm1', { cutoff: 0.38, res: 0.5 }), mod('D', 'd1', { seqPitch: 2, vco2Lvl: 0.5 })],
+      cables: [['m1', 'assign', 'd1', 'adv'], ['m1', 'kb', 'd1', 'vco1Cv']], fx: { ...FX },
+    }),
+  },
+  {
+    name: 'Polirritmo 3:4', classic: true, about: 'S: dois sequenciadores em 3 contra 4, com sub-harmónicos a fazer acordes',
+    make: () => ({
+      mods: [mod('S', 's1', {
+        rhythm1: 2 / 15, rhythm2: 3 / 15, r1s1: 1, r1s2: 0, r2s1: 0, r2s2: 1, sub1Div: 1 / 15, sub2Div: 2 / 15, sub3Div: 2 / 15, sub4Div: 4 / 15,
+        sub1Lvl: 0.6, sub2Lvl: 0.5, sub3Lvl: 0.5, sub4Lvl: 0.4, cutoff: 0.4, vcfDecay: 0.5, vcaDecay: 0.55, tempo: 0.5,
+      })],
+      cables: [], fx: { ...FX },
+    }),
+  },
+);
 
 const rnd = (a = 0, b = 1) => a + Math.random() * (b - a);
 

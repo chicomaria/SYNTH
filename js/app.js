@@ -43,7 +43,11 @@ function save() {
 }
 
 const ui = {}; // por módulo: elementos e funções de atualização
-const engine = new Engine(({ id, st }) => ui[id]?.onStatus(st));
+const leds = {};
+const engine = new Engine((msg) => {
+  if (msg.lv) msg.lv.forEach(([id, v]) => { if (leds[id]) leds[id].style.opacity = v > 0.01 ? Math.min(1, 0.35 + v * 1.5) : 0.12; });
+  else ui[msg.id]?.onStatus(msg.st);
+});
 const scope = new Scope($('scope'), () => engine.analyser);
 async function wake() { await engine.start(state); scope.start(); }
 const getMod = (id) => state.mods.find((m) => m.id === id);
@@ -137,11 +141,11 @@ function renderModule(m) {
       });
       controls.appendChild(row);
     });
-    if (custom && !customPlaced) controls.appendChild(custom);
+    if (custom && !customPlaced && !t.customWide) controls.appendChild(custom);
     patchCols = t.cols;
   } else {
     t.controls.forEach((c) => controls.appendChild(build(c)));
-    if (custom) controls.appendChild(custom);
+    if (custom && !t.customWide) controls.appendChild(custom);
     patchCols = 0;
   }
   body.appendChild(controls);
@@ -160,6 +164,7 @@ function renderModule(m) {
   });
   body.appendChild(patch);
   box.appendChild(body);
+  if (custom && t.customWide) { custom.classList.add('wide'); box.appendChild(custom); }
 
   const lit = t.lit;
   const prev = u.onStatus;
@@ -429,7 +434,7 @@ Object.entries(TYPES).forEach(([type, t]) => {
 });
 
 PRESETS.forEach((preset) => {
-  $('presets').appendChild(btn(preset.name, 'Carregar esta memória', () => loadRack(preset.make())));
+  $(preset.classic ? 'classics' : 'presets').appendChild(btn(preset.name, preset.about || 'Carregar esta memória', () => loadRack(preset.make())));
 });
 
 // Substitui o rack por outro (memória de fábrica ou patch do banco), mantendo o visual e o transporte
@@ -477,7 +482,7 @@ function renderBank(message = '') {
     list.appendChild(row);
   });
   $('bank-msg').textContent = message;
-  $('bank-btn').textContent = `Banco (${bank.length}) ▾`;
+  $('bank-btn').textContent = `Carregar (${bank.length}) ▾`;
 }
 function saveToBank() {
   const input = $('bank-name');
@@ -519,8 +524,9 @@ $('bank-file').addEventListener('change', async (e) => {
   } catch (_) { renderBank('Ficheiro inválido.'); }
 });
 $('bank-btn').addEventListener('click', () => { $('bank-menu').hidden = !$('bank-menu').hidden; });
+$('bank-quick').addEventListener('click', () => { $('bank-menu').hidden = false; $('bank-name').focus(); });
 document.addEventListener('pointerdown', (e) => {
-  if (!e.target.closest('#bank-menu, #bank-btn')) $('bank-menu').hidden = true;
+  if (!e.target.closest('#bank-menu, #bank-btn, #bank-quick')) $('bank-menu').hidden = true;
 });
 renderBank();
 
@@ -533,29 +539,30 @@ const MIX_CONTROLS = [
 function renderMixer() {
   const mixer = $('mixer');
   mixer.innerHTML = '';
-  mixer.appendChild(el('h2', '', 'MIXER'));
+  Object.keys(leds).forEach((k) => delete leds[k]);
   const count = {};
   state.mods.forEach((m) => {
     count[m.type] = (count[m.type] || 0) + 1;
     const ch = el('div', 'channel');
-    ch.appendChild(el('div', 'ch-name', `${m.type} ${count[m.type]}`));
-    const knobs = el('div', 'ch-knobs');
-    MIX_CONTROLS.forEach((c) => knobs.appendChild(buildControl(c, () => m.mix[c.id], (v) => {
+    const name = el('div', 'ch-name', `<span class="sig"></span>${m.type} ${count[m.type]}`);
+    leds[m.id] = name.querySelector('.sig');
+    ch.appendChild(name);
+    // de cima para baixo: FX SEND, PAN, LEVEL
+    [...MIX_CONTROLS].reverse().forEach((c) => ch.appendChild(buildControl(c, () => m.mix[c.id], (v) => {
       m.mix[c.id] = v;
       engine.send({ t: 'mix', id: m.id, v: m.mix });
       save();
     }).el));
-    ch.appendChild(knobs);
     mixer.appendChild(ch);
   });
   const fx = el('div', 'channel fx');
   fx.appendChild(el('div', 'ch-name', 'FX · MASTER'));
-  const knobs = el('div', 'ch-knobs');
+  const knobs = el('div', 'fx-grid');
   FX_CONTROLS.forEach((c) => knobs.appendChild(buildControl(c, () => state.fx[c.id], (v) => {
     state.fx[c.id] = v; engine.fx(state.fx); save();
   }).el));
   fx.appendChild(knobs);
-  mixer.appendChild(fx);
+  $('mixer-fx').replaceChildren(fx);
 }
 
 // ---------- Menu visual: skin, estilo dos knobs e layout ----------

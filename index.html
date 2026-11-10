@@ -16,6 +16,23 @@
     <div class="bar">
       <span class="logo">PULSO</span>
       <button id="play" class="big">▶ Tocar tudo</button>
+      <span class="group menu-anchor">
+        <button id="bank-quick" title="Guardar o rack atual no banco">Guardar</button>
+        <button id="bank-btn" title="Carregar um patch do banco">Carregar ▾</button>
+        <div id="bank-menu" hidden>
+          <div class="bank-row">
+            <input id="bank-name" type="text" maxlength="40" placeholder="Nome do patch" aria-label="Nome do patch" />
+            <button id="bank-save" class="on">Guardar</button>
+          </div>
+          <div id="bank-list"></div>
+          <div class="bank-row">
+            <button id="bank-export" title="Descarregar o banco como ficheiro">Exportar</button>
+            <button id="bank-import" title="Juntar patches de um ficheiro">Importar</button>
+            <input id="bank-file" type="file" accept="application/json,.json" hidden />
+          </div>
+          <p id="bank-msg" class="hint"></p>
+        </div>
+      </span>
       <span class="group" id="add-buttons"><span class="group-label">Adicionar</span></span>
       <span class="group">
         <span class="group-label">Aleatório</span>
@@ -40,30 +57,19 @@
     </div>
     <div class="bar">
       <span class="group" id="presets"><span class="group-label">Memórias</span></span>
-      <span class="group menu-anchor">
-        <button id="bank-btn" title="Banco de patches">Banco ▾</button>
-        <div id="bank-menu" hidden>
-          <div class="bank-row">
-            <input id="bank-name" type="text" maxlength="40" placeholder="Nome do patch" aria-label="Nome do patch" />
-            <button id="bank-save" class="on">Guardar</button>
-          </div>
-          <div id="bank-list"></div>
-          <div class="bank-row">
-            <button id="bank-export" title="Descarregar o banco como ficheiro">Exportar</button>
-            <button id="bank-import" title="Juntar patches de um ficheiro">Importar</button>
-            <input id="bank-file" type="file" accept="application/json,.json" hidden />
-          </div>
-          <p id="bank-msg" class="hint"></p>
-        </div>
-      </span>
-      <canvas id="scope" aria-label="Osciloscópio"></canvas>
+      <span class="group" id="classics"><span class="group-label">Clássicos</span></span>
+    </div>
+    <div class="mixer-wrap">
+      <section id="mixer" class="mixer" aria-label="Mixer"></section>
+      <section id="mixer-fx" class="mixer" aria-label="Efeitos e master"></section>
+      <div class="scope-box"><canvas id="scope" aria-label="Osciloscópio"></canvas></div>
     </div>
     <p id="patch-hint" class="hint"></p>
   </header>
 
   <main id="rack-wrap">
     <svg id="cables" aria-hidden="true"></svg>
-    <div id="rack"><section id="mixer" class="mixer"></section></div>
+    <div id="rack"></div>
   </main>
 
   <script type="module" src="js/app.js"></script>

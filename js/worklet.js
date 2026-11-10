@@ -74,6 +74,7 @@ class Mod {
     this.last = '';
     this.mix = d.mix || { level: 0.8, pan: 0.5, send: 0.25 };
     this.gL = this.gR = this.gS = 0;
+    this.pk = 0;
     this.init();
   }
   init() {}
@@ -591,6 +592,7 @@ class PulsoProcessor extends AudioWorkletProcessor {
     this.mods = [];
     this.byId = {};
     this.cables = [];
+    this.frame = 0;
     this.port.onmessage = (e) => this.msg(e.data);
   }
   msg(m) {
@@ -633,6 +635,8 @@ class PulsoProcessor extends AudioWorkletProcessor {
       let l = 0, r = 0, sd = 0;
       for (let m = 0; m < n; m++) {
         const mod = mods[m], v = mod.tick();
+        const a = v < 0 ? -v : v;
+        if (a > mod.pk) mod.pk = a;
         l += v * mod.gL; r += v * mod.gR; sd += v * mod.gS;
       }
       outL[i] = l === l ? l * 0.85 : 0;
@@ -642,6 +646,11 @@ class PulsoProcessor extends AudioWorkletProcessor {
     for (let m = 0; m < n; m++) {
       const st = mods[m].status(), key = st.join(',');
       if (key !== mods[m].last) { mods[m].last = key; this.port.postMessage({ id: mods[m].id, st }); }
+    }
+    // nível de sinal de cada módulo, para os LEDs do mixer
+    if (++this.frame % 8 === 0) {
+      this.port.postMessage({ lv: mods.map((m) => [m.id, m.pk * m.mix.level]) });
+      for (let m = 0; m < n; m++) mods[m].pk = 0;
     }
     return true;
   }
