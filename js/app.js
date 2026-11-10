@@ -1,28 +1,34 @@
 import { Engine } from './engine.js';
-import { Sequencer } from './sequencer.js';
 import { Knob } from './knob.js';
 import { Scope } from './scope.js';
-import { DEFAULT_PARAMS, DEFAULT_ROUTES, PRESETS, randomSteps, randomParams } from './presets.js';
+import {
+  M_CONTROLS, D_CONTROLS, FX_CONTROLS, M_JACKS, D_JACKS, ALL_JACKS, DEFAULT_PARAMS,
+  PRESETS, defaultState, randomDSeq, randomMSeq, noteName,
+} from './defs.js';
 
-const STORAGE_KEY = 'pulso-state-v1';
-const clone = (o) => JSON.parse(JSON.stringify(o));
+const STORAGE_KEY = 'pulso-state-v2';
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, html) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+};
 
 // ---------- Estado ----------
 function loadState() {
+  const base = defaultState();
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (saved && saved.params && saved.steps?.length === 8) {
-      return {
-        params: { ...DEFAULT_PARAMS, ...saved.params },
-        routes: { ...DEFAULT_ROUTES, ...saved.routes },
-        steps: saved.steps,
-      };
+    if (saved && saved.p && saved.mSteps?.length === 32 && saved.dPitch?.length === 8) {
+      return { ...base, ...saved, p: { ...DEFAULT_PARAMS, ...saved.p, mRunning: 0, dRunning: 0 } };
     }
-  } catch (_) { /* sem armazenamento disponível */ }
-  const p = PRESETS[1];
-  return { params: clone(p.params), routes: clone(p.routes), steps: clone(p.steps) };
+  } catch (_) { /* sem armazenamento */ }
+  return base;
 }
 let state = loadState();
+state.p.mRunning = 0;
+state.p.dRunning = 0;
 let saveTimer;
 function save() {
   clearTimeout(saveTimer);
@@ -31,225 +37,268 @@ function save() {
   }, 300);
 }
 
-const engine = new Engine();
-const seq = new Sequencer(engine, () => state, highlightStep);
-const scope = new Scope(document.getElementById('scope'), () => engine.analyser);
+let mPlayStep = -1, dPlayStep = 0;
+const engine = new Engine(({ m, d }) => { mPlayStep = m; dPlayStep = d; renderPlayheads(); });
+const scope = new Scope($('scope'), () => engine.analyser);
+async function wake() { await engine.start(state); scope.start(); }
 
-function pushParams() {
-  engine.setParams(state.params, state.routes);
+function setParam(k, v) {
+  state.p[k] = v;
+  engine.param(k, v, state.p);
   save();
 }
 
-// ---------- Formatação dos valores ----------
-const expMap = (v, min, max) => min * Math.pow(max / min, v);
-const hz = (min, max) => (v) => {
-  const f = expMap(v, min, max);
-  return f >= 1000 ? `${(f / 1000).toFixed(1)}k` : `${Math.round(f)}`;
-};
-const ms = (v) => {
-  const s = 0.01 + Math.pow(v, 2) * 2.5;
-  return s >= 1 ? `${s.toFixed(1)}s` : `${Math.round(s * 1000)}ms`;
-};
-const pct = (v) => `${Math.round(v * 100)}`;
-const FORMATS = {
-  vco1Freq: hz(20, 2000), vco2Freq: hz(10, 2000), cutoff: hz(40, 16000),
-  pitchDecay: ms, vcfDecay: ms, vcaDecay: ms,
-  tempo: (v) => `${Math.round(40 + v * 200)}`,
-  delayTime: (v) => `${Math.round((0.03 + v * 0.97) * 1000)}ms`,
-};
-
-// ---------- Construção da interface ----------
+// ---------- Controlos ----------
 const knobs = {};
-function paramKnob(key, label, size = 'md') {
-  const k = new Knob({
-    label, size,
-    value: state.params[key],
-    defaultValue: DEFAULT_PARAMS[key],
-    format: FORMATS[key] || pct,
-    onChange: (v) => { state.params[key] = v; pushParams(); },
-  });
-  knobs[key] = k;
-  return k.el;
-}
+const switches = {};
+const fmt10 = (v) => (v * 10).toFixed(1);
+const fmtBi = (v) => { const x = (v - 0.5) * 10; return `${x > 0 ? '+' : ''}${x.toFixed(1)}`; };
 
-const toggles = {};
-function waveToggle(key) {
-  const b = document.createElement('button');
-  b.className = 'wave-toggle';
-  b.title = 'Forma de onda';
-  const render = () => {
-    b.innerHTML = state.params[key] === 1
-      ? '<svg viewBox="0 0 24 12"><path d="M1 10 V2 H12 V10 H23 V2"/></svg><span>Quadrada</span>'
-      : '<svg viewBox="0 0 24 12"><path d="M1 10 L6.5 2 L12 10 L17.5 2 L23 10"/></svg><span>Triangular</span>';
-  };
-  b.addEventListener('click', () => { state.params[key] = state.params[key] === 1 ? 0 : 1; render(); pushParams(); });
-  toggles[key] = render;
+function buildControl(c) {
+  if (c.type === 'knob') {
+    const k = new Knob({
+      label: c.label, size: c.size || 'md', value: state.p[c.id], defaultValue: c.def,
+      format: c.format || (c.bipolar ? fmtBi : fmt10),
+      onChange: (v) => setParam(c.id, v),
+    });
+    knobs[c.id] = k;
+    return k.el;
+  }
+  const wrap = el('div', 'switch');
+  const opts = el('div', 'switch-opts');
+  const buttons = c.options.map((label, i) => {
+    const b = el('button', '', label);
+    b.addEventListener('click', () => { setParam(c.id, i); render(); });
+    opts.appendChild(b);
+    return b;
+  });
+  const render = () => buttons.forEach((b, i) => b.classList.toggle('on', state.p[c.id] === i));
+  wrap.append(opts, el('div', 'knob-label', c.label));
+  switches[c.id] = render;
   render();
-  return b;
+  return wrap;
 }
+M_CONTROLS.forEach((c) => $('m-controls').appendChild(buildControl(c)));
+D_CONTROLS.forEach((c) => $('d-controls').appendChild(buildControl(c)));
+FX_CONTROLS.forEach((c) => $('fx-controls').appendChild(buildControl(c)));
 
-function module(title, children, cls = '') {
-  const m = document.createElement('section');
-  m.className = `module ${cls}`;
-  m.innerHTML = `<h2>${title}</h2><div class="module-body"></div>`;
-  const body = m.querySelector('.module-body');
-  children.forEach((c) => body.appendChild(c));
-  return m;
-}
-const group = (...els) => {
-  const g = document.createElement('div');
-  g.className = 'group';
-  els.forEach((e) => g.appendChild(e));
-  return g;
-};
-
-const panel = document.getElementById('panel');
-panel.append(
-  module('VCO 1', [paramKnob('vco1Freq', 'Freq', 'lg'), group(waveToggle('vco1Wave')), paramKnob('vco1EgAmt', 'Env. afin.'), paramKnob('vco1Level', 'Nível')]),
-  module('VCO 2', [paramKnob('vco2Freq', 'Freq', 'lg'), group(waveToggle('vco2Wave')), paramKnob('vco2EgAmt', 'Env. afin.'), paramKnob('vco2Level', 'Nível')]),
-  module('Modulação', [paramKnob('fm', 'FM 2→1'), paramKnob('noiseLevel', 'Ruído'), paramKnob('pitchDecay', 'Decay afin.')]),
-  module('Filtro', [paramKnob('cutoff', 'Corte', 'lg'), paramKnob('resonance', 'Ressonância'), paramKnob('vcfEgAmt', 'Env. filtro'), paramKnob('vcfDecay', 'Decay filtro')]),
-  module('Amplitude', [paramKnob('vcaDecay', 'Decay', 'lg'), paramKnob('volume', 'Volume')]),
-  module('Delay', [paramKnob('delayTime', 'Tempo'), paramKnob('delayFeedback', 'Repetições'), paramKnob('delayMix', 'Mistura')]),
-  module('Reverb', [paramKnob('reverbMix', 'Mistura', 'lg')]),
-);
-
-// Patch bay simplificado: cada botão liga ou desliga uma "ligação de cabo"
-const ROUTES = [
-  ['pitchToVco1', 'Afinação do passo', 'VCO 1'],
-  ['pitchToVco2', 'Afinação do passo', 'VCO 2'],
-  ['pitchToVcf', 'Afinação do passo', 'Filtro'],
-  ['velToVca', 'Velocidade', 'Volume'],
-  ['velToVcf', 'Velocidade', 'Filtro'],
-];
-const patch = document.getElementById('patch');
-const routeButtons = {};
-ROUTES.forEach(([key, from, to]) => {
-  const b = document.createElement('button');
-  b.className = 'patch-cable';
-  b.innerHTML = `<span class="jack"></span><span class="cable-label">${from} <b>→</b> ${to}</span><span class="jack"></span>`;
-  b.addEventListener('click', () => { state.routes[key] = !state.routes[key]; renderRoutes(); pushParams(); });
-  routeButtons[key] = b;
-  patch.appendChild(b);
-});
-function renderRoutes() {
-  Object.entries(routeButtons).forEach(([k, b]) => {
-    b.classList.toggle('on', !!state.routes[k]);
-    b.setAttribute('aria-pressed', !!state.routes[k]);
+// ---------- Patch bay e cabos ----------
+const jackEls = {};
+const jackDef = Object.fromEntries(ALL_JACKS.map((j) => [j.id, j]));
+let pending = null;
+function buildJacks(list, host) {
+  list.forEach((j) => {
+    const b = el('button', `jack ${j.out ? 'out' : 'in'}`, `<span class="hole"></span><span class="jack-label">${j.label}</span>`);
+    b.title = `${j.out ? 'Saída' : 'Entrada'}: ${j.label}`;
+    b.addEventListener('click', () => clickJack(j.id));
+    jackEls[j.id] = b;
+    host.appendChild(b);
   });
 }
+buildJacks(M_JACKS, $('m-patch'));
+buildJacks(D_JACKS, $('d-patch'));
 
-// Sequenciador
-const seqEl = document.getElementById('steps');
-const stepUI = [];
-function buildSteps() {
-  seqEl.innerHTML = '';
-  stepUI.length = 0;
-  state.steps.forEach((s, i) => {
-    const col = document.createElement('div');
-    col.className = 'step';
-    const led = document.createElement('div');
-    led.className = 'led';
-    const pitch = new Knob({
-      label: `Afin. ${i + 1}`, size: 'sm', value: s.pitch, defaultValue: 0.5,
-      format: (v) => { const st = Math.round((v * 2 - 1) * 24); return st > 0 ? `+${st}` : `${st}`; },
-      onChange: (v) => { state.steps[i].pitch = v; save(); },
-    });
-    const vel = new Knob({
-      label: `Vel. ${i + 1}`, size: 'sm', value: s.vel, defaultValue: 0.8,
-      onChange: (v) => { state.steps[i].vel = v; save(); },
-    });
-    const on = document.createElement('button');
-    on.className = 'step-on';
-    on.textContent = i + 1;
-    on.title = 'Ligar/desligar passo';
-    on.addEventListener('click', () => { state.steps[i].on = !state.steps[i].on; renderStepOn(i); save(); });
-    col.append(led, pitch.el, vel.el, on);
-    seqEl.appendChild(col);
-    stepUI.push({ col, led, pitch, vel, on });
-    renderStepOn(i);
+function clickJack(id) {
+  const isOut = !!jackDef[id].out;
+  if (pending === id) pending = null;
+  else if (pending && !!jackDef[pending].out !== isOut) {
+    const [out, inn] = isOut ? [id, pending] : [pending, id];
+    state.cables = state.cables.filter((c) => c[1] !== inn);
+    state.cables.push([out, inn]);
+    pending = null;
+    cablesChanged();
+  } else if (!pending && !isOut && state.cables.some((c) => c[1] === id)) {
+    state.cables = state.cables.filter((c) => c[1] !== id); // tocar numa entrada ligada tira o cabo
+    cablesChanged();
+  } else pending = id;
+  renderCables();
+}
+function cablesChanged() {
+  engine.send({ t: 'cables', list: state.cables });
+  save();
+}
+
+const CABLE_COLORS = ['#f6a84a', '#4ac3f6', '#e85d75', '#7bd88f', '#c792ea', '#ffd866'];
+const cableSvg = $('cables');
+function renderCables() {
+  const host = cableSvg.parentElement.getBoundingClientRect();
+  const center = (id) => {
+    const r = jackEls[id].querySelector('.hole').getBoundingClientRect();
+    return [r.left + r.width / 2 - host.left, r.top + r.height / 2 - host.top];
+  };
+  cableSvg.setAttribute('width', host.width);
+  cableSvg.setAttribute('height', host.height);
+  cableSvg.innerHTML = state.cables.map(([a, b], i) => {
+    const [x1, y1] = center(a), [x2, y2] = center(b);
+    const sag = Math.min(90, 30 + Math.hypot(x2 - x1, y2 - y1) * 0.25);
+    const color = CABLE_COLORS[i % CABLE_COLORS.length];
+    return `<path d="M ${x1} ${y1} C ${x1} ${y1 + sag}, ${x2} ${y2 + sag}, ${x2} ${y2}" stroke="${color}" />
+      <circle cx="${x1}" cy="${y1}" r="6" fill="${color}" /><circle cx="${x2}" cy="${y2}" r="6" fill="${color}" />`;
+  }).join('');
+  const used = new Set(state.cables.flat());
+  Object.entries(jackEls).forEach(([id, b]) => {
+    b.classList.toggle('pending', pending === id);
+    b.classList.toggle('used', used.has(id));
   });
+  $('patch-hint').textContent = pending
+    ? `${jackDef[pending].label}: escolhe agora uma ${jackDef[pending].out ? 'entrada' : 'saída'} para ligar o cabo.`
+    : 'Toca numa saída e depois numa entrada para ligar um cabo. Toca numa entrada ligada para o tirar.';
 }
-function renderStepOn(i) {
-  stepUI[i].on.classList.toggle('on', state.steps[i].on);
-  stepUI[i].col.classList.toggle('muted', !state.steps[i].on);
+new ResizeObserver(renderCables).observe(cableSvg.parentElement);
+$('clear-cables').addEventListener('click', () => { state.cables = []; pending = null; cablesChanged(); renderCables(); });
+
+// ---------- Unidade M: sequenciador de 32 passos e teclado de botões ----------
+let mSel = 0;
+let kbOct = 0;
+const mStepsEl = $('m-steps');
+function sendMSteps() {
+  engine.send({ t: 'msteps', steps: state.mSteps, len: state.mLen });
+  save();
 }
-function highlightStep(i) {
-  stepUI.forEach((u, j) => u.led.classList.toggle('lit', i === j));
+function renderMSteps() {
+  mStepsEl.innerHTML = '';
+  for (let i = 0; i < state.mLen; i++) {
+    const st = state.mSteps[i];
+    const b = el('button', 'm-step', `<span class="led"></span><span>${st.r ? '·' : noteName(st.n)}</span>`);
+    b.classList.toggle('sel', i === mSel);
+    b.classList.toggle('rest', st.r);
+    b.addEventListener('click', () => { mSel = i; renderMSteps(); });
+    mStepsEl.appendChild(b);
+  }
+  $('m-len').textContent = `${state.mLen} passos`;
+  $('m-oct').textContent = `Oitava ${kbOct >= 0 ? '+' : ''}${kbOct}`;
+  renderPlayheads();
+}
+function writeStep(step) {
+  state.mSteps[mSel] = step;
+  mSel = (mSel + 1) % state.mLen;
+  sendMSteps();
+  renderMSteps();
+}
+const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B', 'C'];
+KEYS.forEach((name, i) => {
+  const b = el('button', `key ${name.includes('#') ? 'black' : ''}`, name);
+  b.addEventListener('pointerdown', async (e) => {
+    e.preventDefault();
+    b.setPointerCapture(e.pointerId);
+    const n = i + kbOct * 12;
+    await wake();
+    engine.send({ t: 'noteOn', n });
+    writeStep({ n, r: false });
+  });
+  const off = () => engine.send({ t: 'noteOff' });
+  b.addEventListener('pointerup', off);
+  b.addEventListener('pointercancel', off);
+  $('m-keys').appendChild(b);
+});
+$('m-rest').addEventListener('click', () => writeStep({ n: 0, r: true }));
+$('m-len').addEventListener('click', () => {
+  state.mLen = { 8: 16, 16: 32, 32: 8 }[state.mLen] || 16;
+  mSel = Math.min(mSel, state.mLen - 1);
+  sendMSteps();
+  renderMSteps();
+});
+$('m-oct-down').addEventListener('click', () => { kbOct = Math.max(-1, kbOct - 1); renderMSteps(); });
+$('m-oct-up').addEventListener('click', () => { kbOct = Math.min(2, kbOct + 1); renderMSteps(); });
+$('m-rand').addEventListener('click', () => { state.mSteps = randomMSeq(state.mLen); sendMSteps(); renderMSteps(); });
+
+// ---------- Unidade D: sequenciador de 8 passos ----------
+const dStepUI = [];
+function sendDSteps() {
+  engine.send({ t: 'dsteps', pitch: state.dPitch, vel: state.dVel });
+  save();
+}
+for (let i = 0; i < 8; i++) {
+  const col = el('div', 'step');
+  const led = el('div', 'led');
+  const pitch = new Knob({
+    label: `PITCH ${i + 1}`, size: 'sm', value: state.dPitch[i], defaultValue: 0.5, format: fmtBi,
+    onChange: (v) => { state.dPitch[i] = v; sendDSteps(); },
+  });
+  const vel = new Knob({
+    label: `VELOCITY ${i + 1}`, size: 'sm', value: state.dVel[i], defaultValue: 1, format: fmt10,
+    onChange: (v) => { state.dVel[i] = v; sendDSteps(); },
+  });
+  col.append(led, pitch.el, vel.el, el('div', 'step-num', `${i + 1}`));
+  $('d-steps').appendChild(col);
+  dStepUI.push({ led, pitch, vel });
+}
+$('d-rand').addEventListener('click', () => {
+  const r = randomDSeq();
+  state.dPitch = r.pitch; state.dVel = r.vel;
+  dStepUI.forEach((u, i) => { u.pitch.set(r.pitch[i], false); u.vel.set(r.vel[i], false); });
+  sendDSteps();
+});
+$('d-trig').addEventListener('click', async () => { await wake(); engine.send({ t: 'dTrig' }); });
+$('d-adv').addEventListener('click', async () => { await wake(); engine.send({ t: 'dAdv' }); });
+
+function renderPlayheads() {
+  [...mStepsEl.children].forEach((b, i) => b.classList.toggle('playing', state.p.mRunning === 1 && i === mPlayStep));
+  dStepUI.forEach((u, i) => u.led.classList.toggle('lit', i === dPlayStep));
 }
 
-// Transporte
-const transport = document.getElementById('transport-knobs');
-transport.append(paramKnob('tempo', 'BPM', 'lg'), paramKnob('swing', 'Swing'));
+// ---------- Transporte ----------
+function renderTransport() {
+  const m = state.p.mRunning === 1, d = state.p.dRunning === 1;
+  $('m-run').classList.toggle('on', m);
+  $('m-run').textContent = m ? '■ STOP' : '▶ RUN';
+  $('d-run').classList.toggle('on', d);
+  $('d-run').textContent = d ? '■ STOP' : '▶ RUN';
+  $('play').classList.toggle('on', m || d);
+  $('play').textContent = m || d ? '■ Parar tudo' : '▶ Tocar tudo';
+  renderPlayheads();
+}
+async function setRun(unit, on) {
+  await wake();
+  setParam(unit === 'm' ? 'mRunning' : 'dRunning', on ? 1 : 0);
+  renderTransport();
+}
+$('m-run').addEventListener('click', () => setRun('m', state.p.mRunning !== 1));
+$('d-run').addEventListener('click', () => setRun('d', state.p.dRunning !== 1));
+$('play').addEventListener('click', async () => {
+  const on = !(state.p.mRunning === 1 || state.p.dRunning === 1);
+  await setRun('m', on);
+  await setRun('d', on);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && !e.repeat && e.target === document.body) { e.preventDefault(); $('play').click(); }
+});
 
-const playBtn = document.getElementById('play');
-playBtn.addEventListener('click', async () => {
-  await engine.start();
-  scope.start();
-  if (seq.playing) { seq.stop(); playBtn.classList.remove('on'); playBtn.textContent = '▶ Tocar'; }
-  else { seq.start(); playBtn.classList.add('on'); playBtn.textContent = '■ Parar'; }
-});
-document.getElementById('hit').addEventListener('click', async () => {
-  await engine.start();
-  scope.start();
-  engine.trigger(engine.ctx.currentTime);
-});
-document.getElementById('advance').addEventListener('click', async () => {
-  await engine.start();
-  scope.start();
-  seq.advance();
-});
-
-// Presets e randomizer
-const presetsEl = document.getElementById('presets');
-PRESETS.forEach((p) => {
-  const b = document.createElement('button');
-  b.textContent = p.name;
+// ---------- Memórias ----------
+PRESETS.forEach((preset) => {
+  const b = el('button', '', preset.name);
   b.addEventListener('click', () => {
-    state = { params: { ...state.params, ...clone(p.params), volume: state.params.volume }, routes: clone(p.routes), steps: clone(p.steps) };
+    const next = preset.make();
+    next.p.mRunning = state.p.mRunning;
+    next.p.dRunning = state.p.dRunning;
+    next.p.fxVol = state.p.fxVol;
+    state = next;
     refreshAll();
   });
-  presetsEl.appendChild(b);
-});
-document.getElementById('rand-seq').addEventListener('click', () => { state.steps = randomSteps(); refreshAll(); });
-document.getElementById('rand-sound').addEventListener('click', () => { state.params = randomParams(state.params); refreshAll(); });
-document.getElementById('rand-all').addEventListener('click', () => {
-  state.steps = randomSteps();
-  state.params = randomParams(state.params);
-  Object.keys(state.routes).forEach((k) => { state.routes[k] = Math.random() > 0.5; });
-  state.routes.velToVca = true;
-  refreshAll();
+  $('presets').appendChild(b);
 });
 
 function refreshAll() {
-  Object.entries(knobs).forEach(([k, knob]) => knob.set(state.params[k], false));
-  Object.values(toggles).forEach((r) => r());
-  state.steps.forEach((s, i) => {
-    stepUI[i].pitch.set(s.pitch, false);
-    stepUI[i].vel.set(s.vel, false);
-    renderStepOn(i);
-  });
-  renderRoutes();
-  pushParams();
+  Object.entries(knobs).forEach(([k, knob]) => knob.set(state.p[k], false));
+  Object.values(switches).forEach((r) => r());
+  dStepUI.forEach((u, i) => { u.pitch.set(state.dPitch[i], false); u.vel.set(state.dVel[i], false); });
+  mSel = 0; pending = null;
+  renderMSteps();
+  renderCables();
+  renderTransport();
+  engine.sync(state);
+  save();
 }
 
-// Atalho: barra de espaços toca/para
-document.addEventListener('keydown', (e) => {
-  if (e.code === 'Space' && !e.repeat && !(e.target instanceof HTMLInputElement)) {
-    e.preventDefault();
-    playBtn.click();
-  }
-});
-
-buildSteps();
-renderRoutes();
-pushParams();
+renderMSteps();
+renderCables();
+renderTransport();
 scope.drawIdle();
+
+// Acesso para depuração na consola do browser
+window.pulso = { engine, get state() { return state; } };
 
 // Instalação como app (PWA) quando servido por http(s)
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
-
-// Acesso para depuração na consola do browser
-window.pulso = { engine, seq, get state() { return state; } };
