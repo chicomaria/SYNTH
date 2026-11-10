@@ -1,12 +1,11 @@
-// Liga o AudioWorklet (onde vivem as duas unidades) aos efeitos, ao osciloscópio e à saída.
+// Liga o AudioWorklet (onde vivem os módulos) aos efeitos, ao osciloscópio e à saída.
 
-import { OUTS, INS, SMOOTH_KEYS } from './defs.js';
+import { TYPES } from './defs.js';
 
 export class Engine {
-  constructor(onSteps) {
+  constructor(onStatus) {
     this.ctx = null;
-    this.onSteps = onSteps;
-    this.pending = [];
+    this.onStatus = onStatus;
   }
 
   async start(state) {
@@ -14,8 +13,7 @@ export class Engine {
       if (this.ctx.state !== 'running') await this.ctx.resume();
       return;
     }
-    if (this.starting) return this.starting;
-    this.starting = this.init(state);
+    if (!this.starting) this.starting = this.init(state);
     return this.starting;
   }
 
@@ -23,12 +21,8 @@ export class Engine {
     const AC = window.AudioContext || window.webkitAudioContext;
     const ctx = new AC({ latencyHint: 'interactive' });
     await ctx.audioWorklet.addModule('js/worklet.js');
-    this.node = new AudioWorkletNode(ctx, 'pulso', {
-      numberOfInputs: 0,
-      outputChannelCount: [1],
-      processorOptions: { outs: OUTS, ins: INS, params: state.p, smooth: SMOOTH_KEYS },
-    });
-    this.node.port.onmessage = (e) => this.onSteps(e.data);
+    this.node = new AudioWorkletNode(ctx, 'pulso', { numberOfInputs: 0, outputChannelCount: [1] });
+    this.node.port.onmessage = (e) => this.onStatus(e.data);
 
     this.delay = ctx.createDelay(2);
     this.delayFb = ctx.createGain();
@@ -74,29 +68,28 @@ export class Engine {
 
   send(msg) { if (this.node) this.node.port.postMessage(msg); }
 
-  // Envia o estado completo (ao arrancar e ao carregar uma memória)
-  sync(state) {
-    if (!this.ctx) return;
-    this.send({ t: 'all', p: state.p });
-    this.send({ t: 'cables', list: state.cables });
-    this.send({ t: 'dsteps', pitch: state.dPitch, vel: state.dVel });
-    this.send({ t: 'msteps', steps: state.mSteps, len: state.mLen });
-    this.fx(state.p);
+  addModule(m) {
+    const t = TYPES[m.type];
+    this.send({ t: 'add', def: { id: m.id, type: m.type, ins: t.ins, outs: t.outs, p: m.p, smooth: t.smooth, data: m.data } });
   }
 
-  param(k, v, p) {
-    if (k.startsWith('fx')) this.fx(p);
-    else this.send({ t: 'p', k, v });
+  // Envia o rack completo (ao arrancar e ao carregar uma memória)
+  sync(state) {
+    if (!this.ctx) return;
+    this.send({ t: 'clear' });
+    state.mods.forEach((m) => this.addModule(m));
+    this.send({ t: 'cables', list: state.cables });
+    this.fx(state.fx);
   }
 
   fx(p) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     const set = (param, v) => param.setTargetAtTime(v, t, 0.02);
-    set(this.delay.delayTime, 0.03 + p.fxDelayTime * 0.97);
-    set(this.delayFb.gain, p.fxDelayFb * 0.9);
-    set(this.delaySend.gain, p.fxDelayMix);
-    set(this.reverbSend.gain, p.fxReverb * 0.8);
-    set(this.master.gain, p.fxVol);
+    set(this.delay.delayTime, 0.03 + p.delayTime * 0.97);
+    set(this.delayFb.gain, p.delayFb * 0.9);
+    set(this.delaySend.gain, p.delayMix);
+    set(this.reverbSend.gain, p.reverb * 0.8);
+    set(this.master.gain, p.vol);
   }
 }

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Pulso</title>
-  <meta name="description" content="Dois sintetizadores semi-modulares com patch bay, a correr no browser." />
+  <meta name="description" content="Rack de sintetizadores semi-modulares com patch bay, a correr no browser." />
   <meta name="theme-color" content="#16181b" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
@@ -12,88 +12,37 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main class="synth">
+  <header class="top">
+    <div class="bar">
+      <span class="logo">PULSO</span>
+      <button id="play" class="big">▶ Tocar tudo</button>
+      <span class="group" id="add-buttons"><span class="group-label">Adicionar</span></span>
+      <span class="group">
+        <span class="group-label">Aleatório</span>
+        <button id="rand-patch" title="Cabos aleatórios entre todos os módulos">⚄ patch</button>
+        <button id="rand-seq" title="Sequências aleatórias em todos os módulos">⚄ sequência</button>
+        <button id="rand-knobs" title="Knobs aleatórios em todos os módulos">⚄ knobs</button>
+      </span>
+      <span class="group">
+        <button id="clear-cables" title="Tirar todos os cabos">sem cabos</button>
+        <button id="zoom-out" title="Diminuir">−</button>
+        <span id="zoom-label" class="readout">100%</span>
+        <button id="zoom-in" title="Aumentar">+</button>
+      </span>
+    </div>
+    <div class="bar">
+      <span class="group" id="presets"><span class="group-label">Memórias</span></span>
+      <div id="fx-controls" class="controls fx"></div>
+      <canvas id="scope" aria-label="Osciloscópio"></canvas>
+    </div>
+    <p id="patch-hint" class="hint"></p>
+  </header>
+
+  <main id="rack-wrap">
     <svg id="cables" aria-hidden="true"></svg>
-
-    <header class="top">
-      <div class="brand">
-        <span class="logo">PULSO</span>
-        <span class="tag">dois sintetizadores semi-modulares</span>
-      </div>
-      <div class="transport">
-        <button id="play" class="big">▶ Tocar tudo</button>
-      </div>
-    </header>
-
-    <section class="row-top">
-      <div class="box">
-        <h2>Memórias</h2>
-        <div id="presets" class="btn-row"></div>
-        <h2>Efeitos</h2>
-        <div id="fx-controls" class="controls"></div>
-      </div>
-      <div class="scope-box">
-        <canvas id="scope" aria-label="Osciloscópio"></canvas>
-      </div>
-    </section>
-
-    <section class="unit" id="unit-m">
-      <header class="unit-head">
-        <h1>PULSO M <small>melódico · 1 oscilador · sequenciador de 32 passos</small></h1>
-        <div class="btn-row">
-          <button id="m-run">▶ RUN</button>
-        </div>
-      </header>
-      <div class="unit-body">
-        <div id="m-controls" class="controls"></div>
-        <div class="patch-wrap">
-          <h2>Patch bay</h2>
-          <div id="m-patch" class="patch cols-4"></div>
-        </div>
-      </div>
-      <div class="seq">
-        <div class="btn-row">
-          <button id="m-len">16 passos</button>
-          <button id="m-oct-down">Oitava −</button>
-          <span id="m-oct" class="readout">Oitava +0</span>
-          <button id="m-oct-up">Oitava +</button>
-          <button id="m-rest">Pausa</button>
-          <button id="m-rand">Aleatório</button>
-        </div>
-        <div id="m-steps" class="m-steps"></div>
-        <div id="m-keys" class="keys"></div>
-        <p class="hint">Escolhe um passo e carrega numa nota para a gravar. A seleção avança sozinha.</p>
-      </div>
-    </section>
-
-    <section class="unit" id="unit-d">
-      <header class="unit-head">
-        <h1>PULSO D <small>percussão · 2 osciladores · sequenciador de 8 passos</small></h1>
-        <div class="btn-row">
-          <button id="d-run">▶ RUN</button>
-          <button id="d-trig">TRIGGER</button>
-          <button id="d-adv">ADVANCE</button>
-          <button id="d-rand">Aleatório</button>
-        </div>
-      </header>
-      <div class="unit-body">
-        <div id="d-controls" class="controls"></div>
-        <div class="patch-wrap">
-          <h2>Patch bay</h2>
-          <div id="d-patch" class="patch cols-3"></div>
-        </div>
-      </div>
-      <div class="seq">
-        <div id="d-steps" class="steps"></div>
-      </div>
-    </section>
-
-    <footer class="foot">
-      <p id="patch-hint" class="hint"></p>
-      <button id="clear-cables">Tirar todos os cabos</button>
-      <p class="hint">Arrasta os knobs para cima e para baixo (Shift ou dois dedos para ajuste fino). Duplo toque repõe o valor. Espaço toca e para.</p>
-    </footer>
+    <div id="rack"></div>
   </main>
+
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

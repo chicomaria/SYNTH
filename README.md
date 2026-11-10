@@ -1,36 +1,35 @@
 # Pulso
 
-Dois sintetizadores semi-modulares que correm no browser, com patch bay de cabos virtuais. A arquitetura segue a de dois instrumentos analógicos clássicos, o Moog Mother-32 (unidade melódica) e o Moog DFAM (unidade de percussão): os mesmos controlos, o mesmo fluxo de sinal e os mesmos pontos de patch. O nome, o aspeto visual e o código são originais. Este projeto não tem qualquer ligação à Moog Music.
+Rack de sintetizadores semi-modulares que corre no browser, com patch bay de cabos virtuais. Cada módulo segue a arquitetura de um instrumento semi-modular da Moog (os mesmos tipos de controlo, o mesmo fluxo de sinal, pontos de patch equivalentes). O nome, o aspeto visual e o código são originais. Este projeto não tem qualquer ligação à Moog Music.
 
-## Pulso M (melódico)
+Site: https://chicomaria.github.io/SYNTH/
 
-- 1 oscilador (serra ou pulso, com largura de pulso), ruído, MIX.
-- Filtro ladder de 4 polos, passa-baixo ou passa-alto, com ressonância auto-oscilante.
-- Envelope (attack, decay, sustain on/off), LFO (triangular ou quadrada), glide.
-- Modulação do VCO (fonte EG/LFO, destino largura de pulso ou frequência) e do filtro (fonte, quantidade, polaridade).
-- VCA em modo EG ou ON.
-- Sequenciador de até 32 passos, programado com um teclado de 13 botões.
-- Patch bay de 32 pontos.
+## Módulos
 
-## Pulso D (percussão)
+| Módulo | Arquitetura | Resumo |
+| --- | --- | --- |
+| Pulso M | Mother-32 | 1 VCO serra/pulso, filtro ladder LP/HP, EG, LFO, sequenciador até 32 passos, 32 pontos de patch |
+| Pulso D | DFAM | 2 VCOs com FM e hard sync, ruído, 3 envelopes de decay, sequenciador de 8 passos, 24 pontos de patch |
+| Pulso S | Subharmonicon | 2 VCOs com 2 sub-harmónicos cada, 2 sequenciadores de 4 passos, 4 geradores de ritmo, quantização |
+| Pulso L | Labyrinth | VCO sinusoidal com FM, wavefolder, filtro LP/BP, 2 sequenciadores generativos de 8 bits com "corrupt" |
+| Pulso X | Spectravox | Banco de 10 filtros com spectral shift e LFO, modo vocoder com entrada de programa |
 
-- 2 osciladores (triangular ou quadrada) com FM 1→2 e hard sync.
-- Ruído, filtro ladder passa-baixo ou passa-alto.
-- Três envelopes de decay (VCO, VCF, VCA), com quantidades bipolares.
-- Sequenciador de 8 passos com afinação e velocidade por passo.
-- Patch bay de 24 pontos.
+## Rack
 
-## Patch bay
-
-Toca numa saída e depois numa entrada para ligar um cabo. Toca numa entrada ligada para o tirar. Os cabos podem ligar as duas unidades entre si. Por exemplo, `ASSIGN` (relógio de passos do Pulso M) para `ADV/CLOCK` do Pulso D põe as duas em sincronia.
+- **Adicionar, remover, minimizar:** podes ter várias instâncias do mesmo módulo. Minimizado, o módulo mostra só o patch bay.
+- **Cabos:** toca numa saída e depois numa entrada de qualquer módulo. Vários cabos na mesma entrada somam-se. Toca numa entrada ligada para tirar o último cabo.
+- **Aleatório:** patch, sequência e knobs, para todo o rack (barra de topo) ou por módulo.
+- **Zoom:** botões − e + na barra de topo.
+- Delay, reverb e osciloscópio globais. O estado fica guardado no browser. Instalável como app (PWA).
 
 ## Diferenças conhecidas em relação ao hardware
 
-- A saída `ASSIGN` envia sempre o relógio de passos (no hardware é configurável).
-- O sequenciador do Pulso M guarda nota e pausa por passo. Não tem acento, ratchet, swing nem os 64 padrões em memória.
-- Tempo e gate length são dois knobs separados.
-- Não há MIDI.
 - O som é um modelo digital, não uma emulação ao nível do circuito.
+- Pulso L e Pulso X foram feitos a partir da arquitetura geral desses instrumentos. Os controlos e os pontos de patch não foram conferidos um a um com os manuais.
+- Pulso X não tem entrada de microfone: o programa do vocoder vem de um cabo (por exemplo, a saída VCA de outro módulo).
+- Pulso M: o sequenciador guarda nota e pausa por passo (sem acento, ratchet, swing, nem os 64 padrões). A saída ASSIGN envia sempre o relógio de passos.
+- Pulso S: quantização só em 12-ET; sem modos de afinação justa.
+- Não há MIDI.
 
 ## Correr localmente
 
@@ -45,9 +44,17 @@ python3 -m http.server 8000
 
 | Ficheiro | Função |
 | --- | --- |
-| `js/worklet.js` | Motor de som das duas unidades e matriz de patch (AudioWorklet) |
+| `js/worklet.js` | Motor de som: uma classe por tipo de módulo e a matriz de patch (AudioWorklet) |
+| `js/defs.js` | Controlos e pontos de patch de cada tipo, memórias e aleatório |
+| `js/app.js` | Interface do rack |
 | `js/engine.js` | Ligação do worklet aos efeitos e à saída |
-| `js/defs.js` | Controlos, pontos de patch, memórias e aleatório |
-| `js/app.js` | Interface |
 | `js/knob.js`, `js/scope.js` | Knob e osciloscópio |
 | `sw.js`, `manifest.webmanifest` | Instalação como app e modo offline |
+
+## Publicar
+
+O site é servido a partir do ramo `gh-pages`:
+
+```sh
+git push origin main && git push origin main:gh-pages
+```
