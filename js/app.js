@@ -1,10 +1,11 @@
 import { Engine } from './engine.js';
 import { Knob } from './knob.js';
 import { Scope } from './scope.js';
+import { createStage } from './stage.js';
 import { TYPES, FX_CONTROLS, PRESETS, newModule, randomParams, randomMSeq, randomCables, noteName } from './defs.js';
 
 const STORAGE_KEY = 'pulso-rack-v3';
-const DEFAULT_VIEW = { skin: 'pulso', knobs: 'arc', layout: 'original', vars: null };
+const DEFAULT_VIEW = { mode: 'rack', skin: 'pulso', knobs: 'arc', layout: 'original', vars: null };
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, html) => {
   const e = document.createElement(tag);
@@ -45,8 +46,10 @@ function save() {
 const ui = {}; // por módulo: elementos e funções de atualização
 const leds = {};
 const engine = new Engine((msg) => {
-  if (msg.lv) msg.lv.forEach(([id, v]) => { if (leds[id]) leds[id].style.opacity = v > 0.01 ? Math.min(1, 0.35 + v * 1.5) : 0.12; });
-  else ui[msg.id]?.onStatus(msg.st);
+  if (msg.lv) {
+    msg.lv.forEach(([id, v]) => { if (leds[id]) leds[id].style.opacity = v > 0.01 ? Math.min(1, 0.35 + v * 1.5) : 0.12; });
+    if (state.view.mode === 'stage') stage.levels(msg.lv);
+  } else ui[msg.id]?.onStatus(msg.st);
 });
 const scope = new Scope($('scope'), () => engine.analyser);
 async function wake() { await engine.start(state); scope.start(); }
@@ -57,6 +60,28 @@ function setParam(m, k, v) {
   engine.send({ t: 'p', id: m.id, k, v });
   save();
 }
+
+// ---------- Modo Ícones ----------
+const stage = createStage({
+  root: $('stage'),
+  getState: () => state,
+  getMod,
+  setParam,
+  send: (m) => engine.send(m),
+  save,
+  wake,
+  cablesChanged: () => cablesChanged(),
+  fxChanged: () => { engine.fx(state.fx); save(); },
+  toggleRun: (m) => { setParam(m, 'run', m.p.run ? 0 : 1); renderTransport(); },
+  availHeight: () => Math.max(420, window.innerHeight - $('top-bar').offsetHeight - 24),
+});
+const inStage = () => state.view.mode === 'stage';
+function syncMode() {
+  document.documentElement.dataset.mode = inStage() ? 'stage' : 'rack';
+  $('stage').hidden = !inStage();
+  if (inStage()) stage.render(); else renderCables();
+}
+window.addEventListener('resize', () => { if (inStage()) stage.render(); });
 
 // ---------- Controlos ----------
 const fmt10 = (v) => (v * 10).toFixed(1);
@@ -283,6 +308,7 @@ function renderRack() {
   renderTransport();
   applyView();
   applyZoom();
+  syncMode();
 }
 
 let counter = 0;
@@ -297,7 +323,7 @@ function addModule(type) {
   renderMixer();
   applyView();
   renderCables();
-  ui[id].el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  if (inStage()) stage.render(); else ui[id].el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 function removeModule(id) {
   state.mods = state.mods.filter((m) => m.id !== id);
@@ -312,6 +338,7 @@ function removeModule(id) {
   applyView();
   renderTransport();
   renderCables();
+  if (inStage()) stage.render();
 }
 
 function refreshModule(m) {
@@ -332,9 +359,12 @@ function randomizeSeq(m) {
   if (m.type === 'L') engine.send({ t: 'cmd', id: m.id, c: 'rseq' });
   refreshModule(m);
 }
-$('rand-knobs').addEventListener('click', () => state.mods.forEach(randomizeKnobs));
-$('rand-seq').addEventListener('click', () => state.mods.forEach(randomizeSeq));
-$('rand-patch').addEventListener('click', () => { state.cables = randomCables(state.mods); pending = null; cablesChanged(); renderCables(); });
+$('rand-knobs').addEventListener('click', () => { state.mods.forEach(randomizeKnobs); if (inStage()) stage.render(); });
+$('rand-seq').addEventListener('click', () => { if (inStage()) stage.randomSeq(); else state.mods.forEach(randomizeSeq); });
+$('rand-patch').addEventListener('click', () => {
+  if (inStage()) { stage.randomPatch(); return; } // no modo ícones, o patch aleatório espalha os módulos e a proximidade faz os cabos
+  state.cables = randomCables(state.mods); pending = null; cablesChanged(); renderCables();
+});
 
 // ---------- Cabos ----------
 let pending = null;
@@ -395,7 +425,7 @@ function renderCables() {
     : 'Cabos: toca numa saída e depois numa entrada de qualquer módulo. Toca numa entrada ligada para tirar o cabo.';
 }
 new ResizeObserver(renderCables).observe(rack);
-$('clear-cables').addEventListener('click', () => { state.cables = []; pending = null; cablesChanged(); renderCables(); });
+$('clear-cables').addEventListener('click', () => { state.cables = []; pending = null; cablesChanged(); renderCables(); stage.redraw(); });
 
 // ---------- Transporte, zoom e barra de topo ----------
 function renderTransport() {
@@ -409,6 +439,7 @@ function renderTransport() {
   });
   $('play').classList.toggle('on', any);
   $('play').textContent = any ? '■ Parar tudo' : '▶ Tocar tudo';
+  stage.syncRun();
 }
 $('play').addEventListener('click', async () => {
   const on = !state.mods.some((m) => m.p.run);
@@ -450,7 +481,7 @@ function loadRack(data) {
   const ids = new Set(rackData.mods.map((m) => m.id));
   rackData.cables = (rackData.cables || []).filter((c) => ids.has(c[0]) && ids.has(c[2]));
   const fx = Object.fromEntries(FX_CONTROLS.map((c) => [c.id, c.def]));
-  state = { zoom: state.zoom, view: state.view, mods: rackData.mods, cables: rackData.cables, fx: { ...fx, ...rackData.fx } };
+  state = { zoom: state.zoom, view: state.view, stage: state.stage, mods: rackData.mods, cables: rackData.cables, fx: { ...fx, ...rackData.fx } };
   pending = null;
   renderRack();
   engine.sync(state);
@@ -567,6 +598,7 @@ function renderMixer() {
 
 // ---------- Menu visual: skin, estilo dos knobs e layout ----------
 const VIEW_OPTIONS = {
+  mode: [['rack', 'Rack'], ['stage', 'Ícones']],
   skin: [['pulso', 'Pulso'], ['classic', 'Clássico'], ['funky', 'Funky'], ['seventies', 'Anos 70'], ['random', '⚄ Aleatório']],
   knobs: [['arc', 'Arco'], ['solid', 'Clássico'], ['random', '⚄ Aleatório']],
   layout: [['original', 'Original'], ['compact', 'Compacto']],
@@ -612,7 +644,7 @@ Object.entries(VIEW_OPTIONS).forEach(([key, options]) => {
       state.view[key] = value;
       if (key === 'skin' && value === 'random') state.view.vars = randomSkinVars(); // cada toque gera outra
       if (relayout) renderRack(); else applyView();
-      renderCables();
+      if (key === 'mode') syncMode(); else renderCables();
       save();
     });
     b.dataset.key = key; b.dataset.value = value;

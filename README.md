@@ -22,6 +22,7 @@ Site: https://chicomaria.github.io/SYNTH/
 - **Zoom:** botões − e + na barra de topo.
 - **Mixer:** fixo no topo, um canal vertical por módulo (FX SEND, PAN, LEVEL) com LED de sinal, ao lado do bloco FX/MASTER e do osciloscópio.
 - **Clássicos:** patches que usam técnicas conhecidas destas máquinas (PWM, acid, bombo com envelope de afinação, FM com hard sync, sincronia M+D, polirritmos). Foram montados à mão, não copiados dos livros de patches do fabricante.
+- **Modo Ícones** (Visual → Modo): sem knobs nem patch bay. Cada módulo é um núcleo com ícones à volta (oscilador, filtro, envelopes, tempo, mix, envio FX, tocar). Arrastar um ícone muda dois parâmetros ao mesmo tempo (horizontal e vertical); duplo toque repõe o valor. O ícone de sequência gera e deforma a sequência (densidade e alcance). Arrastar o núcleo de um módulo para junto de outro cria cabos automaticamente (mais perto, mais cabos). Os botões aleatórios funcionam também neste modo, e o patch aleatório espalha os módulos.
 - **Visual:** menu com skins (Pulso, Clássico, Funky, Anos 70, Aleatório), estilo dos knobs (arco, clássico, aleatório) e layout (Original, com os controlos em linhas pela ordem do painel do hardware, ou Compacto).
 - **Banco de patches:** guarda o rack atual com um nome (módulos, knobs, sequências, cabos, mixer e efeitos), carrega, substitui ou apaga. O banco fica no browser e pode ser exportado e importado como ficheiro `.json`.
 - Osciloscópio global. O estado fica guardado no browser. Instalável como app (PWA).

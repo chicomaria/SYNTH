@@ -13,7 +13,7 @@
 </head>
 <body>
   <header class="top">
-    <div class="bar">
+    <div id="top-bar" class="bar">
       <span class="logo">PULSO</span>
       <button id="play" class="big">▶ Tocar tudo</button>
       <span class="group menu-anchor">
@@ -49,6 +49,7 @@
       <span class="group menu-anchor">
         <button id="view-btn" title="Opções visuais">Visual ▾</button>
         <div id="view-menu" hidden>
+          <span class="group-label">Modo</span><div id="view-mode" class="group"></div>
           <span class="group-label">Skin</span><div id="view-skin" class="group"></div>
           <span class="group-label">Knobs</span><div id="view-knobs" class="group"></div>
           <span class="group-label">Layout</span><div id="view-layout" class="group"></div>
@@ -71,6 +72,7 @@
     <svg id="cables" aria-hidden="true"></svg>
     <div id="rack"></div>
   </main>
+  <section id="stage" hidden aria-label="Modo ícones"></section>
 
   <script type="module" src="js/app.js"></script>
 </body>

@@ -268,3 +268,47 @@ button:focus-visible, .knob-dial:focus-visible { outline: 2px solid var(--accent
 [data-layout="original"] .type-D .row .custom { width: 60px; flex-direction: column; gap: 3px; margin: 0; align-self: center; }
 [data-layout="original"] .type-D .row .custom button { width: 100%; padding: 4px 0; font-size: 8px; }
 [data-layout="original"] .type-D .row .knob-sm { width: 48px; }
+
+/* ---------- Modo Ícones: sem knobs nem patch bay ---------- */
+[data-mode="stage"] #rack-wrap, [data-mode="stage"] #mixer, [data-mode="stage"] #mixer-fx, [data-mode="stage"] #patch-hint { display: none; }
+[data-mode="stage"] .mixer-wrap { height: 64px; }
+#stage { position: relative; margin: 8px; overflow: hidden; border-radius: var(--radius); border: 1px solid var(--line);
+  background: radial-gradient(ellipse at 20% 10%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 55%),
+              radial-gradient(ellipse at 85% 90%, color-mix(in srgb, var(--led) 9%, transparent), transparent 55%), var(--panel); }
+#stage[hidden] { display: none; }
+.st-links { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.st-link { fill: none; stroke-linecap: round; opacity: 0.8; filter: drop-shadow(0 0 4px #0008); }
+.st-link-label { font-size: 9px; fill: var(--muted); paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
+.st-bar { position: absolute; left: 8px; top: 8px; right: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; z-index: 3; }
+.st-hint { font-size: 10px; color: var(--muted); flex: 1 1 240px; }
+
+.st-field, .st-label, .st-icon, .st-core, .st-tip { position: absolute; left: 0; top: 0; }
+.st-field {
+  width: 82px; height: 82px; border-radius: 30%; pointer-events: none; border: 1px dashed color-mix(in srgb, var(--muted) 45%, transparent);
+  background: radial-gradient(circle at var(--gx, 50%) var(--gy, 50%), hsl(var(--h) 90% 60% / 0.5), transparent 68%);
+}
+.st-field.plain { background: none; border-color: transparent; }
+.st-field[hidden], .st-label[hidden], .st-icon[hidden] { display: none; }
+.st-label { width: 80px; text-align: center; font-size: 9px; color: var(--muted); pointer-events: none; line-height: 1.1; }
+.st-icon {
+  width: 38px; height: 38px; padding: 0; border-radius: 50%; display: grid; place-items: center; touch-action: none; cursor: grab;
+  color: #0b0c0e; border: 1.5px solid hsl(var(--h) 90% 85% / 0.7);
+  background: radial-gradient(circle at 30% 25%, hsl(var(--h) 85% 70%), hsl(calc(var(--h) + 40) 70% 32%));
+  box-shadow: 0 2px 8px #0008, 0 0 0 0 hsl(var(--h) 90% 60% / 0.6); z-index: 2;
+}
+.st-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.st-icon.drag { cursor: grabbing; box-shadow: 0 4px 14px #000a, 0 0 18px 4px hsl(var(--h) 90% 60% / 0.6); }
+.st-icon.on { box-shadow: 0 0 14px 3px hsl(var(--h) 90% 60% / 0.8); }
+.st-core {
+  width: 64px; height: 64px; padding: 0; border-radius: 50%; touch-action: none; cursor: grab; z-index: 4;
+  color: #0b0c0e; font-size: 12px; letter-spacing: 0.04em;
+  border: 2px solid hsl(var(--h) 90% 88% / 0.8);
+  background: conic-gradient(from 200deg, hsl(var(--h) 85% 62%), hsl(calc(var(--h) + 70) 80% 48%), hsl(var(--h) 85% 62%));
+  box-shadow: 0 0 calc(8px + 40px * var(--lv, 0)) hsl(var(--h) 90% 60% / calc(0.25 + 0.6 * var(--lv, 0)));
+}
+.st-core.closed { border-style: dashed; }
+.st-tip {
+  z-index: 6; pointer-events: none; white-space: nowrap; font-size: 10px; padding: 3px 7px; border-radius: 6px;
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line); box-shadow: 0 4px 12px #0008;
+}
+.st-tip[hidden] { display: none; }

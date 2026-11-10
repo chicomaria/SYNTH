@@ -634,7 +634,9 @@ class PulsoProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < outL.length; i++) {
       let l = 0, r = 0, sd = 0;
       for (let m = 0; m < n; m++) {
-        const mod = mods[m], v = mod.tick();
+        const mod = mods[m];
+        let v = mod.tick();
+        if (!(v > -1e3 && v < 1e3)) { mod.init(); v = 0; }
         const a = v < 0 ? -v : v;
         if (a > mod.pk) mod.pk = a;
         l += v * mod.gL; r += v * mod.gR; sd += v * mod.gS;

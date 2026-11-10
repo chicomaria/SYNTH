@@ -1,8 +1,8 @@
 // Service worker: guarda os ficheiros em cache para a app funcionar offline e ser instalável.
-const CACHE = 'pulso-v6';
+const CACHE = 'pulso-v7';
 const FILES = [
   './', './index.html', './style.css', './manifest.webmanifest',
-  './js/app.js', './js/engine.js', './js/knob.js', './js/scope.js', './js/defs.js', './js/worklet.js',
+  './js/app.js', './js/engine.js', './js/knob.js', './js/scope.js', './js/defs.js', './js/stage.js', './js/worklet.js',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png',
 ];
 self.addEventListener('install', (e) => {
