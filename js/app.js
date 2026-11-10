@@ -429,18 +429,100 @@ Object.entries(TYPES).forEach(([type, t]) => {
 });
 
 PRESETS.forEach((preset) => {
-  $('presets').appendChild(btn(preset.name, 'Carregar esta memória', () => {
-    const running = state.mods.some((m) => m.p.run);
-    const view = state.view;
-    state = { zoom: state.zoom, ...preset.make() };
-    if (running) state.mods.forEach((m) => { if (TYPES[m.type].hasRun) m.p.run = 1; });
-    pending = null;
-    state.view = view;
-    renderRack();
-    engine.sync(state);
-    save();
-  }));
+  $('presets').appendChild(btn(preset.name, 'Carregar esta memória', () => loadRack(preset.make())));
 });
+
+// Substitui o rack por outro (memória de fábrica ou patch do banco), mantendo o visual e o transporte
+function loadRack(data) {
+  const running = state.mods.some((m) => m.p.run);
+  const rackData = JSON.parse(JSON.stringify(data));
+  rackData.mods = (rackData.mods || []).filter((m) => TYPES[m.type]);
+  rackData.mods.forEach((m) => {
+    m.p = { ...TYPES[m.type].defaults, ...m.p, run: running && TYPES[m.type].hasRun ? 1 : 0 };
+    m.mix = { level: 0.8, pan: 0.5, send: 0.25, ...m.mix };
+    m.data = m.data || (TYPES[m.type].data ? TYPES[m.type].data() : {});
+  });
+  const ids = new Set(rackData.mods.map((m) => m.id));
+  rackData.cables = (rackData.cables || []).filter((c) => ids.has(c[0]) && ids.has(c[2]));
+  const fx = Object.fromEntries(FX_CONTROLS.map((c) => [c.id, c.def]));
+  state = { zoom: state.zoom, view: state.view, mods: rackData.mods, cables: rackData.cables, fx: { ...fx, ...rackData.fx } };
+  pending = null;
+  renderRack();
+  engine.sync(state);
+  save();
+}
+
+// ---------- Banco de patches (guardado no browser, com exportação e importação em ficheiro) ----------
+const BANK_KEY = 'pulso-bank-v1';
+function readBank() {
+  try { const b = JSON.parse(localStorage.getItem(BANK_KEY)); return Array.isArray(b) ? b : []; } catch (_) { return []; }
+}
+function writeBank(bank) {
+  try { localStorage.setItem(BANK_KEY, JSON.stringify(bank)); return true; } catch (_) { return false; }
+}
+const snapshot = () => JSON.parse(JSON.stringify({ mods: state.mods, cables: state.cables, fx: state.fx }));
+function renderBank(message = '') {
+  const bank = readBank(), list = $('bank-list');
+  list.innerHTML = '';
+  if (!bank.length) list.appendChild(el('p', 'hint', 'Ainda não há patches guardados.'));
+  bank.forEach((patch, i) => {
+    const row = el('div', 'bank-row');
+    const load = btn(patch.name, 'Carregar este patch', () => { loadRack(patch.rack); renderBank(`"${patch.name}" carregado.`); }, 'bank-name');
+    row.append(
+      load,
+      el('span', 'readout', `${patch.rack.mods.length} mód.`),
+      btn('↻', 'Substituir pelo rack atual', () => { bank[i].rack = snapshot(); writeBank(bank); renderBank(`"${patch.name}" atualizado.`); }),
+      btn('✕', 'Apagar este patch', () => { bank.splice(i, 1); writeBank(bank); renderBank(`"${patch.name}" apagado.`); }),
+    );
+    list.appendChild(row);
+  });
+  $('bank-msg').textContent = message;
+  $('bank-btn').textContent = `Banco (${bank.length}) ▾`;
+}
+function saveToBank() {
+  const input = $('bank-name');
+  const bank = readBank();
+  const name = input.value.trim() || `Patch ${bank.length + 1}`;
+  const existing = bank.findIndex((p) => p.name === name);
+  const entry = { name, saved: new Date().toISOString(), rack: snapshot() };
+  if (existing >= 0) bank[existing] = entry; else bank.push(entry);
+  const ok = writeBank(bank);
+  input.value = '';
+  renderBank(ok ? `"${name}" guardado.` : 'Não foi possível guardar neste browser.');
+}
+$('bank-save').addEventListener('click', saveToBank);
+$('bank-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveToBank(); });
+$('bank-export').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify({ pulsoBank: 1, patches: readBank() }, null, 2)], { type: 'application/json' });
+  const a = el('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'pulso-banco.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+$('bank-import').addEventListener('click', () => $('bank-file').click());
+$('bank-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const incoming = (data.patches || []).filter((p) => p && typeof p.name === 'string' && p.rack && Array.isArray(p.rack.mods));
+    if (!incoming.length) throw new Error('vazio');
+    const bank = readBank();
+    incoming.forEach((p) => {
+      const at = bank.findIndex((x) => x.name === p.name);
+      if (at >= 0) bank[at] = p; else bank.push(p);
+    });
+    writeBank(bank);
+    renderBank(`${incoming.length} patch(es) importado(s).`);
+  } catch (_) { renderBank('Ficheiro inválido.'); }
+});
+$('bank-btn').addEventListener('click', () => { $('bank-menu').hidden = !$('bank-menu').hidden; });
+document.addEventListener('pointerdown', (e) => {
+  if (!e.target.closest('#bank-menu, #bank-btn')) $('bank-menu').hidden = true;
+});
+renderBank();
 
 // ---------- Mixer: um canal por módulo, efeitos e master ----------
 const MIX_CONTROLS = [

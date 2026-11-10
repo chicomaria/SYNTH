@@ -22,6 +22,7 @@ Site: https://chicomaria.github.io/SYNTH/
 - **Zoom:** botões − e + na barra de topo.
 - **Mixer:** no topo do rack, um canal por módulo com LEVEL, PAN e FX SEND, mais o delay, o reverb e o MASTER.
 - **Visual:** menu com skins (Pulso, Clássico, Funky, Anos 70, Aleatório), estilo dos knobs (arco, clássico, aleatório) e layout (Original, com os controlos em linhas pela ordem do painel do hardware, ou Compacto).
+- **Banco de patches:** guarda o rack atual com um nome (módulos, knobs, sequências, cabos, mixer e efeitos), carrega, substitui ou apaga. O banco fica no browser e pode ser exportado e importado como ficheiro `.json`.
 - Osciloscópio global. O estado fica guardado no browser. Instalável como app (PWA).
 
 ## Diferenças conhecidas em relação ao hardware

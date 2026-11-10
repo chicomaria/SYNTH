@@ -40,6 +40,22 @@
     </div>
     <div class="bar">
       <span class="group" id="presets"><span class="group-label">Memórias</span></span>
+      <span class="group menu-anchor">
+        <button id="bank-btn" title="Banco de patches">Banco ▾</button>
+        <div id="bank-menu" hidden>
+          <div class="bank-row">
+            <input id="bank-name" type="text" maxlength="40" placeholder="Nome do patch" aria-label="Nome do patch" />
+            <button id="bank-save" class="on">Guardar</button>
+          </div>
+          <div id="bank-list"></div>
+          <div class="bank-row">
+            <button id="bank-export" title="Descarregar o banco como ficheiro">Exportar</button>
+            <button id="bank-import" title="Juntar patches de um ficheiro">Importar</button>
+            <input id="bank-file" type="file" accept="application/json,.json" hidden />
+          </div>
+          <p id="bank-msg" class="hint"></p>
+        </div>
+      </span>
       <canvas id="scope" aria-label="Osciloscópio"></canvas>
     </div>
     <p id="patch-hint" class="hint"></p>
