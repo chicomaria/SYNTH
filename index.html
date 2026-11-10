@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Pulso</title>
+  <meta name="description" content="Sintetizador percussivo semi-modular com sequenciador de 8 passos, a correr no browser." />
+  <meta name="theme-color" content="#16181b" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="synth">
+    <header class="top">
+      <div class="brand">
+        <span class="logo">PULSO</span>
+        <span class="tag">sintetizador percussivo semi-modular</span>
+      </div>
+      <div class="transport">
+        <button id="play" class="big">▶ Tocar</button>
+        <button id="hit" title="Dispara uma batida">Batida</button>
+        <button id="advance" title="Avança um passo">Passo +1</button>
+        <div id="transport-knobs" class="transport-knobs"></div>
+      </div>
+    </header>
+
+    <section class="row-top">
+      <div class="presets-box">
+        <h2>Memórias</h2>
+        <div id="presets" class="presets"></div>
+        <h2>Aleatório</h2>
+        <div class="presets">
+          <button id="rand-seq">Sequência</button>
+          <button id="rand-sound">Som</button>
+          <button id="rand-all" class="accent">Tudo</button>
+        </div>
+      </div>
+      <div class="scope-box">
+        <canvas id="scope" aria-label="Osciloscópio"></canvas>
+      </div>
+    </section>
+
+    <div id="panel" class="panel"></div>
+
+    <section class="module patch-box">
+      <h2>Ligações</h2>
+      <div id="patch" class="patch"></div>
+    </section>
+
+    <section class="module seq-box">
+      <h2>Sequenciador · 8 passos</h2>
+      <div id="steps" class="steps"></div>
+    </section>
+
+    <footer class="hint">Arrasta os knobs para cima e para baixo (Shift ou dois dedos para ajuste fino). Duplo toque repõe o valor. Espaço toca e para.</footer>
+  </main>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
