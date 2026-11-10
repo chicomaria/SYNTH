@@ -4,6 +4,7 @@ import { Scope } from './scope.js';
 import { TYPES, FX_CONTROLS, PRESETS, newModule, randomParams, randomMSeq, randomCables, noteName } from './defs.js';
 
 const STORAGE_KEY = 'pulso-rack-v3';
+const DEFAULT_VIEW = { skin: 'pulso', knobs: 'arc', layout: 'original', vars: null };
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, html) => {
   const e = document.createElement(tag);
@@ -23,11 +24,14 @@ function loadState() {
   try {
     const s = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (s && Array.isArray(s.mods) && s.mods.every((m) => TYPES[m.type])) {
-      s.mods.forEach((m) => { m.p = { ...TYPES[m.type].defaults, ...m.p, run: 0 }; });
-      return { zoom: 1, cables: [], ...s };
+      s.mods.forEach((m) => {
+        m.p = { ...TYPES[m.type].defaults, ...m.p, run: 0 };
+        m.mix = { level: 0.8, pan: 0.5, send: 0.25, ...m.mix };
+      });
+      return { zoom: 1, cables: [], ...s, view: { ...DEFAULT_VIEW, ...s.view } };
     }
   } catch (_) { /* sem armazenamento */ }
-  return { zoom: 1, ...PRESETS[0].make() };
+  return { zoom: 1, view: { ...DEFAULT_VIEW }, ...PRESETS[0].make() };
 }
 let state = loadState();
 let saveTimer;
@@ -87,6 +91,7 @@ function buildControl(c, get, set) {
 
 // ---------- Módulos ----------
 const rack = $('rack');
+let patchCols = 0;
 function renderModule(m) {
   const t = TYPES[m.type];
   const u = (ui[m.id] = { ctl: {}, jacks: {}, refreshers: [], onStatus: () => {} });
@@ -113,16 +118,37 @@ function renderModule(m) {
   const body = el('div', 'mod-body');
   // Controlos
   const controls = el('div', 'controls');
-  t.controls.forEach((c) => {
+  const build = (c) => {
     const built = buildControl(c, () => m.p[c.id], (v) => setParam(m, c.id, v));
     if (c.id) { u.ctl[c.id] = built.el; u.refreshers.push(built.refresh); }
-    controls.appendChild(built.el);
-  });
-  if (t.custom) controls.appendChild(CUSTOM[t.custom](m, u));
+    return built.el;
+  };
+  const custom = t.custom ? CUSTOM[t.custom](m, u) : null;
+  if (state.view.layout === 'original') {
+    // linhas pela ordem do painel do hardware
+    controls.classList.add('rows');
+    const byId = Object.fromEntries(t.params.map((c) => [c.id, c]));
+    let customPlaced = false;
+    t.rows.forEach((ids) => {
+      const row = el('div', 'row');
+      ids.forEach((id) => {
+        if (id === '@custom') { if (custom) { row.appendChild(custom); customPlaced = true; } }
+        else row.appendChild(build(byId[id]));
+      });
+      controls.appendChild(row);
+    });
+    if (custom && !customPlaced) controls.appendChild(custom);
+    patchCols = t.cols;
+  } else {
+    t.controls.forEach((c) => controls.appendChild(build(c)));
+    if (custom) controls.appendChild(custom);
+    patchCols = 0;
+  }
   body.appendChild(controls);
 
   // Patch bay
   const patch = el('div', 'patch');
+  if (patchCols) { patch.style.gridTemplateColumns = `repeat(${patchCols}, var(--jack-w))`; patch.style.width = 'auto'; }
   t.jacks.forEach((j) => {
     const key = jackKey(m.id, j);
     const b = el('button', `jack ${j.out ? 'out' : 'in'}`, `<span class="hole"></span><span class="jack-label">${j.label}</span>`);
@@ -244,11 +270,13 @@ const CUSTOM = {
 };
 
 function renderRack() {
-  rack.innerHTML = '';
+  rack.querySelectorAll('.mod').forEach((e) => e.remove());
   Object.keys(ui).forEach((k) => delete ui[k]);
   Object.keys(jackInfo).forEach((k) => delete jackInfo[k]);
   state.mods.forEach(renderModule);
+  renderMixer();
   renderTransport();
+  applyView();
   applyZoom();
 }
 
@@ -261,6 +289,8 @@ function addModule(type) {
   renderModule(m);
   engine.addModule(m);
   save();
+  renderMixer();
+  applyView();
   renderCables();
   ui[id].el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -273,6 +303,8 @@ function removeModule(id) {
   pending = null;
   engine.send({ t: 'remove', id });
   cablesChanged();
+  renderMixer();
+  applyView();
   renderTransport();
   renderCables();
 }
@@ -399,21 +431,108 @@ Object.entries(TYPES).forEach(([type, t]) => {
 PRESETS.forEach((preset) => {
   $('presets').appendChild(btn(preset.name, 'Carregar esta memória', () => {
     const running = state.mods.some((m) => m.p.run);
+    const view = state.view;
     state = { zoom: state.zoom, ...preset.make() };
     if (running) state.mods.forEach((m) => { if (TYPES[m.type].hasRun) m.p.run = 1; });
     pending = null;
+    state.view = view;
     renderRack();
-    fxRefresh.forEach((r) => r());
     engine.sync(state);
     save();
   }));
 });
 
-const fxRefresh = [];
-FX_CONTROLS.forEach((c) => {
-  const built = buildControl(c, () => state.fx[c.id], (v) => { state.fx[c.id] = v; engine.fx(state.fx); save(); });
-  fxRefresh.push(built.refresh);
-  $('fx-controls').appendChild(built.el);
+// ---------- Mixer: um canal por módulo, efeitos e master ----------
+const MIX_CONTROLS = [
+  { type: 'knob', id: 'level', label: 'LEVEL', def: 0.8 },
+  { type: 'knob', id: 'pan', label: 'PAN', def: 0.5, bipolar: true },
+  { type: 'knob', id: 'send', label: 'FX SEND', def: 0.25 },
+];
+function renderMixer() {
+  const mixer = $('mixer');
+  mixer.innerHTML = '';
+  mixer.appendChild(el('h2', '', 'MIXER'));
+  const count = {};
+  state.mods.forEach((m) => {
+    count[m.type] = (count[m.type] || 0) + 1;
+    const ch = el('div', 'channel');
+    ch.appendChild(el('div', 'ch-name', `${m.type} ${count[m.type]}`));
+    const knobs = el('div', 'ch-knobs');
+    MIX_CONTROLS.forEach((c) => knobs.appendChild(buildControl(c, () => m.mix[c.id], (v) => {
+      m.mix[c.id] = v;
+      engine.send({ t: 'mix', id: m.id, v: m.mix });
+      save();
+    }).el));
+    ch.appendChild(knobs);
+    mixer.appendChild(ch);
+  });
+  const fx = el('div', 'channel fx');
+  fx.appendChild(el('div', 'ch-name', 'FX · MASTER'));
+  const knobs = el('div', 'ch-knobs');
+  FX_CONTROLS.forEach((c) => knobs.appendChild(buildControl(c, () => state.fx[c.id], (v) => {
+    state.fx[c.id] = v; engine.fx(state.fx); save();
+  }).el));
+  fx.appendChild(knobs);
+  mixer.appendChild(fx);
+}
+
+// ---------- Menu visual: skin, estilo dos knobs e layout ----------
+const VIEW_OPTIONS = {
+  skin: [['pulso', 'Pulso'], ['classic', 'Clássico'], ['funky', 'Funky'], ['seventies', 'Anos 70'], ['random', '⚄ Aleatório']],
+  knobs: [['arc', 'Arco'], ['solid', 'Clássico'], ['random', '⚄ Aleatório']],
+  layout: [['original', 'Original'], ['compact', 'Compacto']],
+};
+const hsl = (h, s, l) => `hsl(${((h % 360) + 360) % 360} ${s}% ${l}%)`;
+function randomSkinVars() {
+  const h = Math.random() * 360, a = h + 120 + Math.random() * 120, light = Math.random() < 0.3;
+  return light ? {
+    '--bg': hsl(h, 35, 80), '--panel': hsl(h, 40, 90), '--panel-2': hsl(h, 35, 82), '--line': hsl(h, 30, 55),
+    '--text': hsl(h, 40, 12), '--muted': hsl(h, 25, 35), '--accent': hsl(a, 85, 45), '--led': hsl(a + 90, 90, 45),
+    '--cap': hsl(a + 180, 40, 30), '--cap-line': hsl(h, 40, 15), '--pointer': hsl(h, 40, 95), '--on-text': '#fff',
+  } : {
+    '--bg': hsl(h, 35, 7), '--panel': hsl(h, 35, 13), '--panel-2': hsl(h, 30, 19), '--line': hsl(h + 20, 30, 34),
+    '--text': hsl(h, 20, 92), '--muted': hsl(h, 20, 66), '--accent': hsl(a, 90, 62), '--led': hsl(a + 90, 95, 60),
+    '--cap': hsl(a + 180, 40, 24), '--cap-line': hsl(a + 180, 30, 45), '--pointer': hsl(h, 20, 95), '--on-text': '#111',
+  };
+}
+function applyView() {
+  const v = state.view, root = document.documentElement;
+  root.dataset.skin = v.skin;
+  root.dataset.layout = v.layout;
+  root.removeAttribute('style');
+  if (v.skin === 'random') {
+    if (!v.vars) v.vars = randomSkinVars();
+    Object.entries(v.vars).forEach(([k, val]) => root.style.setProperty(k, val));
+  }
+  document.querySelectorAll('.knob').forEach((k) => {
+    const rnd = v.knobs === 'random';
+    k.classList.toggle('k-solid', v.knobs === 'solid' || (rnd && Math.random() < 0.5));
+    if (rnd) {
+      const h = Math.random() * 360;
+      k.style.setProperty('--accent', hsl(h, 90, 60));
+      k.style.setProperty('--cap', hsl(h + 180, 45, 28));
+    } else { k.style.removeProperty('--accent'); k.style.removeProperty('--cap'); }
+  });
+  document.querySelectorAll('#view-menu button').forEach((b) => b.classList.toggle('on', v[b.dataset.key] === b.dataset.value));
+}
+Object.entries(VIEW_OPTIONS).forEach(([key, options]) => {
+  const row = $(`view-${key}`);
+  options.forEach(([value, label]) => {
+    const b = btn(label, '', () => {
+      const relayout = key === 'layout' && state.view.layout !== value;
+      state.view[key] = value;
+      if (key === 'skin' && value === 'random') state.view.vars = randomSkinVars(); // cada toque gera outra
+      if (relayout) renderRack(); else applyView();
+      renderCables();
+      save();
+    });
+    b.dataset.key = key; b.dataset.value = value;
+    row.appendChild(b);
+  });
+});
+$('view-btn').addEventListener('click', () => { $('view-menu').hidden = !$('view-menu').hidden; });
+document.addEventListener('pointerdown', (e) => {
+  if (!e.target.closest('#view-menu, #view-btn')) $('view-menu').hidden = true;
 });
 
 renderRack();

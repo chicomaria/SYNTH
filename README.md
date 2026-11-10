@@ -20,7 +20,9 @@ Site: https://chicomaria.github.io/SYNTH/
 - **Cabos:** toca numa saída e depois numa entrada de qualquer módulo. Vários cabos na mesma entrada somam-se. Toca numa entrada ligada para tirar o último cabo.
 - **Aleatório:** patch, sequência e knobs, para todo o rack (barra de topo) ou por módulo.
 - **Zoom:** botões − e + na barra de topo.
-- Delay, reverb e osciloscópio globais. O estado fica guardado no browser. Instalável como app (PWA).
+- **Mixer:** no topo do rack, um canal por módulo com LEVEL, PAN e FX SEND, mais o delay, o reverb e o MASTER.
+- **Visual:** menu com skins (Pulso, Clássico, Funky, Anos 70, Aleatório), estilo dos knobs (arco, clássico, aleatório) e layout (Original, com os controlos em linhas pela ordem do painel do hardware, ou Compacto).
+- Osciloscópio global. O estado fica guardado no browser. Instalável como app (PWA).
 
 ## Diferenças conhecidas em relação ao hardware
 

@@ -29,10 +29,17 @@
         <span id="zoom-label" class="readout">100%</span>
         <button id="zoom-in" title="Aumentar">+</button>
       </span>
+      <span class="group menu-anchor">
+        <button id="view-btn" title="Opções visuais">Visual ▾</button>
+        <div id="view-menu" hidden>
+          <span class="group-label">Skin</span><div id="view-skin" class="group"></div>
+          <span class="group-label">Knobs</span><div id="view-knobs" class="group"></div>
+          <span class="group-label">Layout</span><div id="view-layout" class="group"></div>
+        </div>
+      </span>
     </div>
     <div class="bar">
       <span class="group" id="presets"><span class="group-label">Memórias</span></span>
-      <div id="fx-controls" class="controls fx"></div>
       <canvas id="scope" aria-label="Osciloscópio"></canvas>
     </div>
     <p id="patch-hint" class="hint"></p>
@@ -40,7 +47,7 @@
 
   <main id="rack-wrap">
     <svg id="cables" aria-hidden="true"></svg>
-    <div id="rack"></div>
+    <div id="rack"><section id="mixer" class="mixer"></section></div>
   </main>
 
   <script type="module" src="js/app.js"></script>

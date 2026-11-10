@@ -171,10 +171,42 @@ export const TYPES = {
 
 export const FX_CONTROLS = [
   K('delayTime', 'DELAY TIME', 0.35, { format: (v) => `${Math.round((0.03 + v * 0.97) * 1000)}ms` }),
-  K('delayFb', 'FEEDBACK', 0.4), K('delayMix', 'DELAY MIX', 0.1), K('reverb', 'REVERB', 0.12), K('vol', 'MASTER', 0.8),
+  K('delayFb', 'FEEDBACK', 0.4), K('delayMix', 'DELAY', 0.5), K('reverb', 'REVERB', 0.45), K('vol', 'MASTER', 0.8, { size: 'lg' }),
 ];
 
-for (const t of Object.values(TYPES)) {
+// Layout "original": controlos por linhas, pela ordem do painel do hardware, e colunas do patch bay
+const n8 = (p) => [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `${p}${n}`);
+const LAYOUT = {
+  M: { cols: 4, rows: [
+    ['freq', 'pw', 'wave', 'mix', 'cutoff', 'res', 'vcfMode', 'vcaMode', 'vol'],
+    ['glide', 'vcoModSrc', 'vcoModAmt', 'vcoModDest', 'vcfModSrc', 'vcfModAmt', 'vcfModPol'],
+    ['tempo', 'gateLen', 'lfoRate', 'lfoWave', 'attack', 'sustain', 'decay', 'vcMix'],
+  ] },
+  D: { cols: 3, rows: [
+    ['vcoDecay', 'seqPitch', 'vco1Eg', 'vco1Freq', 'vco1Wave', 'vco1Lvl', 'noiseLvl', 'cutoff', 'res', 'vcfMode', 'vcaEg', 'vol'],
+    ['fm', 'sync', 'vco2Eg', 'vco2Freq', 'vco2Wave', 'vco2Lvl', 'vcfDecay', 'vcfEg', 'noiseMod', 'vcaDecay'],
+    ['tempo', ...n8('pitch')],
+    ['@custom', ...n8('vel')],
+  ] },
+  S: { cols: 4, rows: [
+    ['a1', 'a2', 'a3', 'a4', 's1Osc', 's1Sub1', 's1Sub2', 'vco1Freq', 'sub1Div', 'sub2Div', 'vco1Wave', 'cutoff', 'res', 'vcfEg'],
+    ['b1', 'b2', 'b3', 'b4', 's2Osc', 's2Sub1', 's2Sub2', 'vco2Freq', 'sub3Div', 'sub4Div', 'vco2Wave', 'vcfAttack', 'vcfDecay', 'vcaAttack', 'vcaDecay'],
+    ['tempo', 'rhythm1', 'r1s1', 'r1s2', 'rhythm2', 'r2s1', 'r2s2', 'rhythm3', 'r3s1', 'r3s2', 'rhythm4', 'r4s1', 'r4s2', 'seqOct', 'quant'],
+    ['vco1Lvl', 'sub1Lvl', 'sub2Lvl', 'vco2Lvl', 'sub3Lvl', 'sub4Lvl', 'vol'],
+  ] },
+  L: { cols: 5, rows: [
+    ['vcoFreq', 'vcoEg', 'modFreq', 'fm', 'vcoLvl', 'modLvl', 'noiseLvl', 'vol'],
+    ['fold', 'foldEg', 'cutoff', 'res', 'vcfEg', 'filtMode', 'blend', 'eg1Decay', 'eg2Decay'],
+    ['tempo', 'seq1Range', 'seq1Corrupt', 'seq1Len', 'seq2Range', 'seq2Corrupt', 'seq2Len', 'quant'],
+  ] },
+  X: { cols: 5, rows: [
+    ['vcoFreq', 'vcoWave', 'pw', 'noiseMix', 'progLvl', 'mode', 'vcaMode', 'shift', 'lfoRate', 'lfoAmt', 'res', 'vol'],
+    ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'b10'],
+  ] },
+};
+
+for (const [key, t] of Object.entries(TYPES)) {
+  Object.assign(t, LAYOUT[key]);
   t.params = t.controls.filter((c) => c.id);
   t.defaults = Object.fromEntries(t.params.map((c) => [c.id, c.def]));
   t.smooth = t.params.filter((c) => c.type === 'knob' && !c.seq).map((c) => c.id);
@@ -193,7 +225,7 @@ function mSeq(notes) {
 
 export function newModule(type, id) {
   const t = TYPES[type];
-  return { id, type, p: { ...t.defaults, run: 0 }, data: t.data ? t.data() : {}, min: false };
+  return { id, type, p: { ...t.defaults, run: 0 }, data: t.data ? t.data() : {}, min: false, mix: { level: 0.8, pan: 0.5, send: 0.25 } };
 }
 const mod = (type, id, p = {}) => { const m = newModule(type, id); Object.assign(m.p, p); return m; };
 const FX = Object.fromEntries(FX_CONTROLS.map((c) => [c.id, c.def]));
@@ -210,7 +242,7 @@ export const PRESETS = [
       ],
       // o relógio de passos da unidade melódica avança a percussão
       cables: [['m1', 'assign', 'd1', 'adv']],
-      fx: { ...FX, delayMix: 0.2 },
+      fx: { ...FX },
     }),
   },
   {
@@ -231,7 +263,7 @@ export const PRESETS = [
         ['s1', 'vcaOut', 'x1', 'carrier'], // com os sub-harmónicos como portadora
         ['l1', 'seq2', 'm1', 'cutoff'],
       ],
-      fx: { ...FX, delayMix: 0.15, reverb: 0.25 },
+      fx: { ...FX },
     }),
   },
 ];

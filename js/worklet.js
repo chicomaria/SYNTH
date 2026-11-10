@@ -72,6 +72,8 @@ class Mod {
     this.smooth = d.smooth;
     this.data = d.data || {};
     this.last = '';
+    this.mix = d.mix || { level: 0.8, pan: 0.5, send: 0.25 };
+    this.gL = this.gR = this.gS = 0;
     this.init();
   }
   init() {}
@@ -90,6 +92,11 @@ class Mod {
   pre() {
     const { s, p } = this;
     for (const k of this.smooth) s[k] += (p[k] - s[k]) * 0.3;
+    // mixer: pan de potência constante e envio para os efeitos
+    const { level, pan, send } = this.mix, a = pan * Math.PI * 0.5;
+    this.gL += (level * Math.cos(a) * 1.414 - this.gL) * 0.3;
+    this.gR += (level * Math.sin(a) * 1.414 - this.gR) * 0.3;
+    this.gS += (level * send - this.gS) * 0.3;
     this.block();
   }
 }
@@ -603,6 +610,7 @@ class PulsoProcessor extends AudioWorkletProcessor {
       case 'p': if (mod) mod.p[m.k] = m.v; break;
       case 'all': if (mod) Object.assign(mod.p, m.p); break;
       case 'data': if (mod) mod.setData(m.k, m.v); break;
+      case 'mix': if (mod) mod.mix = m.v; break;
       case 'cmd': if (mod) mod.cmd(m); break;
       case 'cables': this.cables = m.list; this.wire(); break;
     }
@@ -617,14 +625,19 @@ class PulsoProcessor extends AudioWorkletProcessor {
     }
   }
   process(_, outputs) {
-    const out = outputs[0][0];
-    if (!out) return true;
+    const outL = outputs[0][0], outR = outputs[0][1] || outputs[0][0], outS = outputs[1] && outputs[1][0];
+    if (!outL) return true;
     const mods = this.mods, n = mods.length;
     for (let m = 0; m < n; m++) mods[m].pre();
-    for (let i = 0; i < out.length; i++) {
-      let sum = 0;
-      for (let m = 0; m < n; m++) sum += mods[m].tick();
-      out[i] = sum === sum ? sum * 1.2 : 0;
+    for (let i = 0; i < outL.length; i++) {
+      let l = 0, r = 0, sd = 0;
+      for (let m = 0; m < n; m++) {
+        const mod = mods[m], v = mod.tick();
+        l += v * mod.gL; r += v * mod.gR; sd += v * mod.gS;
+      }
+      outL[i] = l === l ? l * 0.85 : 0;
+      outR[i] = r === r ? r * 0.85 : 0;
+      if (outS) outS[i] = sd === sd ? sd * 1.2 : 0;
     }
     for (let m = 0; m < n; m++) {
       const st = mods[m].status(), key = st.join(',');

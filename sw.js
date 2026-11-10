@@ -1,5 +1,5 @@
 // Service worker: guarda os ficheiros em cache para a app funcionar offline e ser instalável.
-const CACHE = 'pulso-v3';
+const CACHE = 'pulso-v4';
 const FILES = [
   './', './index.html', './style.css', './manifest.webmanifest',
   './js/app.js', './js/engine.js', './js/knob.js', './js/scope.js', './js/defs.js', './js/worklet.js',

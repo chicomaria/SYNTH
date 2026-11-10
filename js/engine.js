@@ -21,7 +21,7 @@ export class Engine {
     const AC = window.AudioContext || window.webkitAudioContext;
     const ctx = new AC({ latencyHint: 'interactive' });
     await ctx.audioWorklet.addModule('js/worklet.js');
-    this.node = new AudioWorkletNode(ctx, 'pulso', { numberOfInputs: 0, outputChannelCount: [1] });
+    this.node = new AudioWorkletNode(ctx, 'pulso', { numberOfInputs: 0, numberOfOutputs: 2, outputChannelCount: [2, 1] });
     this.node.port.onmessage = (e) => this.onStatus(e.data);
 
     this.delay = ctx.createDelay(2);
@@ -30,13 +30,15 @@ export class Engine {
     this.delayTone.type = 'lowpass';
     this.delayTone.frequency.value = 4000;
     this.delaySend = ctx.createGain();
-    this.node.connect(this.delaySend).connect(this.delay);
+    this.node.connect(this.delaySend, 1);
+    this.delaySend.connect(this.delay);
     this.delay.connect(this.delayTone).connect(this.delayFb).connect(this.delay);
 
     this.reverb = ctx.createConvolver();
     this.reverb.buffer = this.makeImpulse(ctx, 2.8);
     this.reverbSend = ctx.createGain();
-    this.node.connect(this.reverbSend).connect(this.reverb);
+    this.node.connect(this.reverbSend, 1);
+    this.reverbSend.connect(this.reverb);
 
     this.master = ctx.createGain();
     this.limiter = ctx.createDynamicsCompressor();
@@ -46,7 +48,7 @@ export class Engine {
     this.limiter.release.value = 0.15;
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 2048;
-    this.node.connect(this.master);
+    this.node.connect(this.master, 0);
     this.delay.connect(this.master);
     this.reverb.connect(this.master);
     this.master.connect(this.limiter).connect(this.analyser).connect(ctx.destination);
@@ -70,7 +72,7 @@ export class Engine {
 
   addModule(m) {
     const t = TYPES[m.type];
-    this.send({ t: 'add', def: { id: m.id, type: m.type, ins: t.ins, outs: t.outs, p: m.p, smooth: t.smooth, data: m.data } });
+    this.send({ t: 'add', def: { id: m.id, type: m.type, ins: t.ins, outs: t.outs, p: m.p, smooth: t.smooth, data: m.data, mix: m.mix } });
   }
 
   // Envia o rack completo (ao arrancar e ao carregar uma memória)
