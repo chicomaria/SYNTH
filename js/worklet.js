@@ -601,7 +601,252 @@ class ModX extends Mod {
   }
 }
 
-const TYPES = { M: ModM, D: ModD, S: ModS, L: ModL, X: ModX };
+// ============ Peças partilhadas por N e A: sequenciador de notas e envelope ADSR ============
+// Sequenciador igual ao do M: tempo interno ou relógio externo (cada flanco é um passo), gate length, reset
+class SeqCore {
+  constructor() {
+    this.step = -1; this.phase = 1; this.wasRun = false; this.running = false; this.ext = false;
+    this.extInc = 8 / sampleRate; this.clkN = 0; this.prevClk = 0; this.prevReset = 0; this.gate = false; this.note = 0;
+  }
+  block(tempo, gateLen, ext, running) {
+    this.ext = ext;
+    this.inc = ext ? this.extInc : ((30 * Math.pow(10, tempo)) / 60) * 4 / sampleRate;
+    this.gateLen = 0.1 + 0.88 * gateLen;
+    if (running && !this.wasRun) { this.step = -1; this.phase = 1; }
+    if (!running && this.wasRun) { this.gate = false; this.step = -1; }
+    this.wasRun = this.running = running;
+  }
+  // devolve true no passo em que começa uma nota nova (this.note)
+  tick(clk, reset, data) {
+    let fresh = false;
+    if (reset > 1 && this.prevReset <= 1) { this.step = -1; this.phase = 1; }
+    this.prevReset = reset;
+    if (this.ext) {
+      this.clkN++;
+      if (clk > 1 && this.prevClk <= 1) {
+        if (this.clkN > 32) this.extInc = 1 / this.clkN;
+        this.clkN = 0; this.phase = 1;
+      } else if (this.phase < 0.999) this.phase = Math.min(0.999, this.phase + this.extInc);
+      this.prevClk = clk;
+    }
+    if (this.running || this.ext) {
+      if (!this.ext) this.phase += this.inc;
+      if (this.phase >= 1) {
+        this.phase -= 1;
+        if (this.phase >= 1) this.phase = 0;
+        const steps = data.steps || [], len = data.len || 16;
+        this.step = (this.step + 1) % len;
+        const st = steps[this.step];
+        if (st && !st.r) { this.note = st.n; this.gate = true; fresh = true; } else this.gate = false;
+      }
+      if (this.phase > this.gateLen) this.gate = false;
+    }
+    return fresh;
+  }
+  clock() { return (this.running || this.ext) && this.step >= 0 && this.phase < 0.5 ? 5 : 0; }
+}
+
+// Envelope ADSR (valores 0..1); attack de 1 ms a 10 s, decay e release de 2 ms a 10 s
+class Adsr {
+  constructor() { this.v = 0; this.st = 0; this.g = false; }
+  set(a, d, s, r) {
+    const sr = sampleRate;
+    this.ai = 1 / (sr * 0.001 * Math.pow(10000, clamp(a, 0, 1)));
+    this.dc = Math.exp(-4.6 / (sr * 0.002 * Math.pow(5000, clamp(d, 0, 1))));
+    this.rc = Math.exp(-4.6 / (sr * 0.002 * Math.pow(5000, clamp(r, 0, 1))));
+    this.sus = clamp(s, 0, 1);
+  }
+  tick(gate, retrig) {
+    if ((gate && !this.g) || (gate && retrig)) this.st = 1;
+    if (!gate && this.g) this.st = 3;
+    this.g = gate;
+    if (this.st === 1) { this.v += this.ai; if (this.v >= 1) { this.v = 1; this.st = 2; } }
+    else if (this.st === 2) this.v = this.sus + (this.v - this.sus) * this.dc;
+    else if (this.st === 3) { this.v *= this.rc; if (this.v < 1e-5) { this.v = 0; this.st = 0; } }
+    return this.v;
+  }
+}
+// Oscilador com forma contínua: serra → quadrada → pulso estreito
+function morphOsc(ph, dt, w) {
+  if (w < 0.5) { const x = w * 2; return sawOsc(ph, dt) * (1 - x) + sqOsc(ph, dt, 0.5) * x; }
+  return sqOsc(ph, dt, 0.5 - (w - 0.5) * 0.85);
+}
+
+// ============ N: monossintetizador de dois osciladores (arquitetura do Sirin) ============
+class ModN extends Mod {
+  init() {
+    this.seq = new SeqCore(); this.keyGate = false; this.keyNote = 0; this.kb = -2;
+    this.ph1 = 0; this.ph2 = 0; this.lfo = 0; this.sh = 0;
+    this.fenv = new Adsr(); this.aenv = new Adsr();
+    this.filter = new Ladder();
+  }
+  cmd(m) {
+    if (m.c === 'noteOn') { this.keyNote = m.n; this.keyGate = true; this.retrig = true; }
+    if (m.c === 'noteOff') this.keyGate = false;
+  }
+  status() { return [this.seq.step]; }
+  block() {
+    const { s, p, I } = this, sr = sampleRate;
+    this.seq.block(s.tempo, s.gateLen, this.pat(I.clock), this.pat(I.run) ? this.inp(I.run, 0) > 1 : !!p.run);
+    this.glideC = s.glide < 0.01 ? 1 : 1 - Math.exp(-3 / (sr * 0.005 * Math.pow(400, s.glide)));
+    this.fenv.set(s.fA, s.fD, s.fS, s.fR);
+    this.aenv.set(s.aA, s.aD, s.aS, s.aR);
+    this.lfoInc = (0.05 * Math.pow(1000, s.lfoRate) * Math.pow(2, clamp(this.inp(I.lfoRate, 0), -5, 5))) / sr;
+    this.cutBase = 20 * Math.pow(1000, s.cutoff);
+  }
+  tick() {
+    const { s, p, I, O, o } = this, sr = sampleRate;
+    const fresh = this.seq.tick(this.inp(I.clock, 0), this.inp(I.reset, 0), this.data);
+    const note = this.keyGate ? this.keyNote : this.seq.note;
+    const gate = this.keyGate || this.seq.gate || this.inp(I.gate, 0) > 1;
+    const retrig = fresh || this.retrig; this.retrig = false;
+    this.kb += (note / 12 - 2 - this.kb) * this.glideC;
+
+    this.lfo += this.lfoInc;
+    let wrap = false;
+    if (this.lfo >= 1) { this.lfo -= Math.floor(this.lfo); wrap = true; }
+    if (wrap) this.sh = Math.random() * 2 - 1;
+    const l = this.lfo, lw = p.lfoWave;
+    const lfo = lw === 0 ? (l < 0.5 ? 4 * l - 1 : 3 - 4 * l) : lw === 1 ? (l < 0.5 ? 1 : -1) : lw === 2 ? 1 - 2 * l : this.sh;
+
+    const fe = this.fenv.tick(gate, retrig), ae = this.aenv.tick(gate, retrig);
+    const base = this.kb + this.inp(I.voct, 0) + lfo * s.lfoPitch * 0.5;
+    const f1 = clamp(261.63 * Math.pow(2, clamp(base + (p.osc1Oct - 1), -12, 8)), 0, sr * 0.45);
+    const f2 = clamp(261.63 * Math.pow(2, clamp(base + (p.osc2Oct - 1) + (s.osc2Freq - 0.5) * (14 / 12), -12, 8)), 0, sr * 0.45);
+    const dt1 = f1 / sr, dt2 = f2 / sr;
+    this.ph1 += dt1;
+    let sync = false;
+    if (this.ph1 >= 1) { this.ph1 -= 1; sync = true; }
+    this.ph2 += dt2;
+    if (this.ph2 >= 1) this.ph2 -= 1;
+    if (sync && p.sync) this.ph2 = this.ph1 * (dt2 / dt1);
+    const v1 = morphOsc(this.ph1, dt1, s.osc1Wave), v2 = morphOsc(this.ph2, dt2, s.osc2Wave);
+    const noise = Math.random() * 2 - 1;
+    const pre = v1 * s.osc1Lvl + v2 * s.osc2Lvl + noise * s.noiseLvl + this.inp(I.ext, 0) / 5;
+    const mod = (s.egAmt - 0.5) * 2 * fe * 8 + (this.kb + 2) * s.kbAmt + lfo * s.lfoCut * 3 + this.inp(I.cutoff, 0);
+    const vcf = this.filter.run(pre * 0.75, this.cutBase * Math.pow(2, clamp(mod, -12, 12)), s.res * 4.3, 0);
+    const out = vcf * clamp(ae + this.inp(I.vcaCv, 0) / 8, 0, 1);
+    o[O.vca] = out * 5; o[O.vcf] = vcf * 5; o[O.vco1] = v1 * 5; o[O.vco2] = v2 * 5;
+    o[O.fEg] = fe * 8; o[O.aEg] = ae * 8; o[O.lfo] = lfo * 5; o[O.kb] = this.kb;
+    o[O.gateOut] = gate ? 5 : 0; o[O.clockOut] = this.seq.clock();
+    return out * s.vol;
+  }
+}
+
+// ============ A: semi-modular de três osciladores (arquitetura do ARP 2600) ============
+// Ligações normalizadas (funcionam sem cabos e um cabo substitui-as): ring mod ← VCO 1 e VCO 2 (quadradas),
+// VCA ← VCF, sample & hold ← ruído com relógio interno, lag ← teclado (portamento).
+class ModA extends Mod {
+  init() {
+    this.seq = new SeqCore(); this.keyGate = false; this.keyNote = 0;
+    this.ph = [0, 0, 0]; this.adsr = new Adsr(); this.ar = new Adsr();
+    this.filter = new Ladder(); this.pink = 0; this.brown = 0;
+    this.shPh = 0; this.shV = 0; this.prevShClk = 0; this.lag = -2;
+    // reverb de mola simplificada: três combs com tempos curtos e um passa-tudo
+    const sr = sampleRate;
+    this.combs = [0.0297, 0.0371, 0.0411].map((t) => ({ b: new Float32Array(Math.floor(t * sr)), i: 0, lp: 0 }));
+    this.ap = { b: new Float32Array(Math.floor(0.005 * sr)), i: 0 };
+  }
+  cmd(m) {
+    if (m.c === 'noteOn') { this.keyNote = m.n; this.keyGate = true; this.retrig = true; }
+    if (m.c === 'noteOff') this.keyGate = false;
+  }
+  status() { return [this.seq.step]; }
+  block() {
+    const { s, p, I } = this, sr = sampleRate;
+    this.seq.block(s.tempo, s.gateLen, this.pat(I.clock), this.pat(I.run) ? this.inp(I.run, 0) > 1 : !!p.run);
+    this.adsr.set(s.attack, s.decay, s.sustain, s.release);
+    this.ar.set(s.arA, 0, 1, s.arR);
+    this.lagC = s.porta < 0.01 ? 1 : 1 - Math.exp(-3 / (sr * 0.005 * Math.pow(400, s.porta)));
+    this.shInc = (0.2 * Math.pow(250, s.shRate)) / sr;
+    this.cutBase = 20 * Math.pow(1000, s.cutoff) * Math.pow(2, (s.fine - 0.5));
+  }
+  reverb(x) {
+    let y = 0;
+    for (const c of this.combs) {
+      const d = c.b[c.i];
+      c.lp += (d - c.lp) * 0.45;
+      c.b[c.i] = x + c.lp * 0.78;
+      c.i = (c.i + 1) % c.b.length;
+      y += d;
+    }
+    const a = this.ap, d = a.b[a.i], v = y / 3 + d * 0.6;
+    a.b[a.i] = v; a.i = (a.i + 1) % a.b.length;
+    return d - v * 0.6;
+  }
+  tick() {
+    const { s, p, I, O, o } = this, sr = sampleRate;
+    const fresh = this.seq.tick(this.inp(I.clock, 0), this.inp(I.reset, 0), this.data);
+    const note = this.keyGate ? this.keyNote : this.seq.note;
+    const gate = this.keyGate || this.seq.gate || this.inp(I.gate, 0) > 1;
+    const retrig = fresh || this.retrig || this.inp(I.trig, 0) > 1; this.retrig = false;
+    const kbRaw = note / 12 - 2 + this.inp(I.kbCv, 0);
+    // lag: sem cabo, faz portamento ao teclado
+    const lagSrc = this.pat(I.lagIn) ? this.inp(I.lagIn, 0) : kbRaw;
+    this.lag += (lagSrc - this.lag) * this.lagC;
+    const kb = this.pat(I.lagIn) ? kbRaw : this.lag;
+
+    // ruído com cor (branco → rosa → grave) e sample & hold
+    const white = Math.random() * 2 - 1;
+    this.pink += (white - this.pink) * 0.12; this.brown += (white - this.brown) * 0.01;
+    const c = s.noiseColor, noise = c < 0.5 ? white * (1 - 2 * c) + this.pink * 2.5 * 2 * c : this.pink * 2.5 * (2 - 2 * c) + this.brown * 10 * (2 * c - 1);
+    let shTrig = false;
+    if (this.pat(I.shClk)) { const v = this.inp(I.shClk, 0); shTrig = v > 1 && this.prevShClk <= 1; this.prevShClk = v; }
+    else { this.shPh += this.shInc; if (this.shPh >= 1) { this.shPh -= 1; shTrig = true; } }
+    if (shTrig) this.shV = this.pat(I.shIn) ? this.inp(I.shIn, 0) / 5 : clamp(noise, -1, 1);
+    const sh = this.shV;
+
+    const env = this.adsr.tick(gate, retrig), ar = this.ar.tick(gate, retrig);
+
+    // VCO 3 primeiro (modula os outros); com KB OFF fica fixo, bom para LFO
+    const ph = this.ph;
+    const p3 = (s.v3Coarse - 0.5) * 8 + (s.v3Fine - 0.5) * 0.5 + (p.v3Kb ? 0 : kb) + noise * s.v3Fm * 0.5 + this.inp(I.v3Fm, 0) + (p.v3Low ? -7 : 0);
+    const dt3 = clamp(261.63 * Math.pow(2, clamp(p3, -16, 8)), 0, sr * 0.45) / sr;
+    ph[2] += dt3; if (ph[2] >= 1) ph[2] -= 1;
+    const v3tri = ph[2] < 0.5 ? 4 * ph[2] - 1 : 3 - 4 * ph[2];
+    const v3saw = sawOsc(ph[2], dt3), v3pulse = sqOsc(ph[2], dt3, 0.5);
+
+    const sine2 = Math.sin(TWO_PI * ph[1]);
+    const p1 = (s.v1Coarse - 0.5) * 8 + (s.v1Fine - 0.5) * 0.5 + kb + sine2 * s.v1Fm1 * 2 + sh * s.v1Fm2 * 2 + this.inp(I.v1Fm, 0);
+    const dt1 = clamp(261.63 * Math.pow(2, clamp(p1, -12, 8)), 0, sr * 0.45) / sr;
+    ph[0] += dt1;
+    let wrapped = false;
+    if (ph[0] >= 1) { ph[0] -= 1; wrapped = true; }
+    const v1saw = sawOsc(ph[0], dt1), v1sq = sqOsc(ph[0], dt1, 0.5);
+
+    const p2 = (s.v2Coarse - 0.5) * 8 + (s.v2Fine - 0.5) * 0.5 + kb + v3tri * s.v2Fm * 2 + env * s.v2Adsr * 3 + this.inp(I.v2Fm, 0);
+    const dt2 = clamp(261.63 * Math.pow(2, clamp(p2, -12, 8)), 0, sr * 0.45) / sr;
+    ph[1] += dt2; if (ph[1] >= 1) ph[1] -= 1;
+    if (wrapped && p.sync) ph[1] = ph[0] * (dt2 / dt1);
+    const pw = clamp(0.5 + (s.v2Pw - 0.5) * 0.9 + (this.pat(I.v2Pwm) ? this.inp(I.v2Pwm, 0) / 10 : v3tri * s.v2Pwm * 0.45), 0.03, 0.97);
+    const v2tri = ph[1] < 0.5 ? 4 * ph[1] - 1 : 3 - 4 * ph[1];
+    const v2saw = sawOsc(ph[1], dt2), v2pulse = sqOsc(ph[1], dt2, pw), v2sine = Math.sin(TWO_PI * ph[1]);
+
+    const ringA = this.pat(I.ringA) ? this.inp(I.ringA, 0) / 5 : v1sq;
+    const ringB = this.pat(I.ringB) ? this.inp(I.ringB, 0) / 5 : v2pulse;
+    const ring = ringA * ringB;
+
+    // VCF: misturador de entrada, ladder com FM do ADSR, do seno do VCO 2 e do teclado
+    const pre = ring * s.fRing + v1sq * s.fV1 + v2saw * s.fV2 + v3tri * s.fV3 + noise * s.fNoise + this.inp(I.vcfIn, 0) / 5;
+    const fm = env * s.fAdsr * 8 + v2sine * s.fSine * 3 + (kb + 2) * s.fKb + this.inp(I.vcfFm, 0);
+    const vcf = this.filter.run(pre * 0.45, this.cutBase * Math.pow(2, clamp(fm, -12, 12)), s.res * 4.3, 0);
+
+    // VCA: sem cabo recebe o VCF e o ring mod; o ganho vem do ganho inicial e do envelope AR
+    const vin = (this.pat(I.vcaIn) ? this.inp(I.vcaIn, 0) / 5 : vcf) + ring * s.vcaRing;
+    const vca = vin * clamp(s.vcaInit + ar * s.vcaAr + this.inp(I.vcaCv, 0) / 8, 0, 1.2);
+    const wet = this.reverb(vca);
+    const out = vca * (1 - s.reverb * 0.5) + wet * s.reverb * 1.2;
+
+    o[O.v1Saw] = v1saw * 5; o[O.v1Sq] = v1sq * 5; o[O.v2Sine] = v2sine * 5; o[O.v2Tri] = v2tri * 5; o[O.v2Saw] = v2saw * 5;
+    o[O.v2Pulse] = v2pulse * 5; o[O.v3Tri] = v3tri * 5; o[O.v3Pulse] = v3pulse * 5; o[O.v3Saw] = v3saw * 5;
+    o[O.noise] = clamp(noise, -1.5, 1.5) * 5; o[O.ring] = ring * 5; o[O.vcf] = vcf * 5; o[O.vca] = vca * 5;
+    o[O.adsr] = env * 8; o[O.ar] = ar * 8; o[O.sh] = sh * 5; o[O.lag] = this.lag; o[O.kb] = kb;
+    o[O.gateOut] = gate ? 5 : 0; o[O.clockOut] = this.seq.clock(); o[O.out] = out * 5;
+    return out * s.vol;
+  }
+}
+
+const TYPES = { M: ModM, D: ModD, S: ModS, L: ModL, X: ModX, N: ModN, A: ModA };
 
 class PulsoProcessor extends AudioWorkletProcessor {
   constructor() {

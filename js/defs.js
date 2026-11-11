@@ -167,6 +167,67 @@ export const TYPES = {
     ],
     lit: () => [],
   },
+
+  N: {
+    name: 'PULSO N', sub: 'dois osciladores e ladder · arquitetura do Sirin', hasRun: true, custom: 'mseq', customWide: true,
+    controls: [
+      H('OSCILLATORS'), S('osc1Oct', 'OSC 1 OCT', ["16'", "8'", "4'"], 1), K('osc1Wave', 'OSC 1 WAVE', 0),
+      S('osc2Oct', 'OSC 2 OCT', ["16'", "8'", "4'"], 1), K('osc2Freq', 'OSC 2 FREQ', 0.5, { bipolar: true, r: [0.4, 0.6] }),
+      K('osc2Wave', 'OSC 2 WAVE', 0.5), S('sync', 'SYNC', ['OFF', 'ON']), K('glide', 'GLIDE', 0, { r: [0, 0.4] }),
+      H('MIXER'), K('osc1Lvl', 'OSC 1', 0.8, LVL), K('osc2Lvl', 'OSC 2', 0.6), K('noiseLvl', 'NOISE', 0, { r: [0, 0.3] }),
+      H('FILTER'), K('cutoff', 'CUTOFF', 0.4, CUT), K('res', 'RESONANCE', 0.35, { r: [0, 0.8] }),
+      K('egAmt', 'EG AMOUNT', 0.75, { bipolar: true, r: [0.5, 1] }), K('kbAmt', 'KB AMOUNT', 0.5),
+      H('FILTER EG'), K('fA', 'VCF ATTACK', 0, { r: [0, 0.4] }), K('fD', 'VCF DECAY', 0.4, DEC), K('fS', 'VCF SUSTAIN', 0.2), K('fR', 'VCF RELEASE', 0.3, { r: [0, 0.6] }),
+      H('AMP EG'), K('aA', 'VCA ATTACK', 0, { r: [0, 0.3] }), K('aD', 'VCA DECAY', 0.45, DEC), K('aS', 'VCA SUSTAIN', 0.6), K('aR', 'VCA RELEASE', 0.3, { r: [0, 0.6] }),
+      H('LFO / SEQ'), K('lfoRate', 'LFO RATE', 0.45), S('lfoWave', 'LFO WAVE', ['TRI', 'SQ', 'SAW', 'S&H']),
+      K('lfoPitch', 'LFO → PITCH', 0, { r: [0, 0.2] }), K('lfoCut', 'LFO → CUTOFF', 0, { r: [0, 0.5] }),
+      K('tempo', 'TEMPO', 0.602, { keep: true, format: (v) => `${Math.round(30 * Math.pow(10, v))}` }),
+      K('gateLen', 'GATE LENGTH', 0.5), K('vol', 'VOLUME', 0.7, VOL),
+    ],
+    jacks: [
+      i('voct', '1V/OCT'), i('gate', 'GATE'), i('cutoff', 'CUTOFF'),
+      i('vcaCv', 'VCA CV'), i('ext', 'EXT AUDIO'), i('lfoRate', 'LFO RATE'),
+      i('clock', 'CLOCK', NR), i('run', 'RUN/STOP', NR), i('reset', 'RESET', NR),
+      o('vco1', 'OSC 1'), o('vco2', 'OSC 2'), o('vcf', 'VCF'),
+      o('fEg', 'FILTER EG'), o('aEg', 'AMP EG'), o('lfo', 'LFO'),
+      o('kb', 'KB'), o('gateOut', 'GATE'), o('clockOut', 'CLOCK'), o('vca', 'OUT'),
+    ],
+    data: () => ({ steps: mSeq([0, 0, 12, 0, 7, 0, 3, 5, 0, 0, 12, 10, 7, 0, 3, null]), len: 16 }),
+    lit: () => [],
+  },
+
+  A: {
+    name: 'PULSO A', sub: 'semi-modular de três osciladores · arquitetura do ARP 2600', hasRun: true, custom: 'mseq', customWide: true,
+    controls: [
+      H('VCO 1'), K('v1Coarse', 'VCO 1 COARSE', 0.5, { bipolar: true, r: [0.4, 0.6] }), K('v1Fine', 'FINE', 0.5, { bipolar: true, r: [0.45, 0.55] }),
+      K('v1Fm1', 'FM · VCO 2 SINE', 0, { r: [0, 0.3] }), K('v1Fm2', 'FM · S/H', 0, { r: [0, 0.3] }),
+      H('VCO 2'), K('v2Coarse', 'VCO 2 COARSE', 0.5, { bipolar: true, r: [0.4, 0.65] }), K('v2Fine', 'FINE', 0.52, { bipolar: true, r: [0.45, 0.55] }),
+      K('v2Fm', 'FM · VCO 3 TRI', 0, { r: [0, 0.3] }), K('v2Adsr', 'FM · ADSR', 0, { r: [0, 0.3] }),
+      K('v2Pw', 'PULSE WIDTH', 0.5), K('v2Pwm', 'PWM · VCO 3', 0, { r: [0, 0.6] }), S('sync', 'SYNC 2→1', ['OFF', 'ON']),
+      H('VCO 3'), K('v3Coarse', 'VCO 3 COARSE', 0.4, { bipolar: true }), K('v3Fine', 'FINE', 0.5, { bipolar: true }),
+      K('v3Fm', 'FM · NOISE', 0, { r: [0, 0.3] }), S('v3Low', 'RANGE', ['AUDIO', 'LOW']), S('v3Kb', 'KYBD', ['ON', 'OFF']),
+      H('NOISE / S&H / LAG'), K('noiseColor', 'NOISE COLOR', 0), K('shRate', 'S/H CLOCK', 0.5), K('porta', 'PORTAMENTO', 0, { r: [0, 0.4] }),
+      H('VCF'), K('fRing', 'RING', 0, { r: [0, 0.5] }), K('fV1', 'VCO 1 SQ', 0.6), K('fV2', 'VCO 2 SAW', 0.5), K('fV3', 'VCO 3 TRI', 0, { r: [0, 0.4] }),
+      K('fNoise', 'NOISE', 0, { r: [0, 0.3] }), K('cutoff', 'CUTOFF', 0.4, CUT), K('fine', 'FINE', 0.5, { bipolar: true }),
+      K('res', 'RESONANCE', 0.3, { r: [0, 0.85] }), K('fAdsr', 'FM ADSR', 0.5), K('fSine', 'FM SINE', 0, { r: [0, 0.4] }), K('fKb', 'FM KYBD', 0.5),
+      H('ADSR / AR'), K('attack', 'ATTACK', 0.02, { r: [0, 0.4] }), K('decay', 'DECAY', 0.4, DEC), K('sustain', 'SUSTAIN', 0.3), K('release', 'RELEASE', 0.3, { r: [0, 0.6] }),
+      K('arA', 'AR ATTACK', 0.02, { r: [0, 0.3] }), K('arR', 'AR RELEASE', 0.35, { r: [0.1, 0.6] }),
+      H('VCA / MIX'), K('vcaInit', 'INITIAL GAIN', 0, { keep: true }), K('vcaAr', 'AR', 1, { r: [0.6, 1] }), K('vcaRing', 'RING', 0, { r: [0, 0.4] }),
+      K('reverb', 'REVERB', 0.2, { r: [0, 0.6] }), K('vol', 'VOLUME', 0.7, VOL),
+      K('tempo', 'TEMPO', 0.602, { keep: true, format: (v) => `${Math.round(30 * Math.pow(10, v))}` }), K('gateLen', 'GATE LENGTH', 0.5),
+    ],
+    jacks: [
+      i('kbCv', 'KYBD CV'), i('gate', 'GATE'), i('trig', 'TRIG'), i('v1Fm', 'VCO 1 FM'), i('v2Fm', 'VCO 2 FM'), i('v3Fm', 'VCO 3 FM'),
+      i('v2Pwm', 'VCO 2 PWM'), i('ringA', 'RING A'), i('ringB', 'RING B'), i('vcfIn', 'VCF IN'), i('vcfFm', 'VCF FM'), i('vcaIn', 'VCA IN'),
+      i('vcaCv', 'VCA CV'), i('shIn', 'S/H IN'), i('shClk', 'S/H CLOCK', NR), i('lagIn', 'LAG IN'), i('clock', 'CLOCK', NR), i('reset', 'RESET', NR), i('run', 'RUN/STOP', NR),
+      o('v1Saw', 'VCO 1 SAW'), o('v1Sq', 'VCO 1 SQ'), o('v2Sine', 'VCO 2 SINE'), o('v2Tri', 'VCO 2 TRI'), o('v2Saw', 'VCO 2 SAW'), o('v2Pulse', 'VCO 2 PULSE'),
+      o('v3Tri', 'VCO 3 TRI'), o('v3Saw', 'VCO 3 SAW'), o('v3Pulse', 'VCO 3 PULSE'), o('noise', 'NOISE'), o('ring', 'RING'), o('sh', 'S/H'),
+      o('vcf', 'VCF'), o('vca', 'VCA'), o('adsr', 'ADSR'), o('ar', 'AR'), o('lag', 'LAG'), o('kb', 'KYBD'),
+      o('gateOut', 'GATE'), o('clockOut', 'CLOCK'), o('out', 'OUT'),
+    ],
+    data: () => ({ steps: mSeq([0, null, 0, 12, null, 7, 10, null, 0, 3, null, 0, 15, 12, 7, null]), len: 16 }),
+    lit: () => [],
+  },
 };
 
 export const FX_CONTROLS = [
@@ -215,6 +276,24 @@ const LAYOUT = {
     ...at(1, [['res', 10], ['vol', 11.1]]),
     ...at(1.6, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => [`b${n}`, 0.7 + (n - 1) * 0.95])),
   } },
+  // Pulso N: painel compacto de secretária; aqui os controlos ficam em quatro linhas pela ordem do fluxo de sinal
+  N: { cols: 3, grid: 11, rows: 4, at: {
+    ...at(0, [['osc1Oct', 0.6], ['osc1Wave', 1.6], ['osc2Oct', 2.8], ['osc2Freq', 3.8], ['osc2Wave', 4.8], ['sync', 5.8], ['cutoff', 7.3, 'lg'], ['res', 8.8], ['vol', 10.1]]),
+    ...at(1, [['glide', 0.6], ['osc1Lvl', 1.6], ['osc2Lvl', 2.8], ['noiseLvl', 3.8], ['lfoRate', 4.8], ['lfoWave', 5.8], ['egAmt', 7.3], ['kbAmt', 8.8]]),
+    ...at(2, [['fA', 0.6, 'sm'], ['fD', 1.6, 'sm'], ['fS', 2.6, 'sm'], ['fR', 3.6, 'sm'], ['lfoPitch', 4.8], ['lfoCut', 5.8], ['tempo', 7.3], ['gateLen', 8.8, 'sm']]),
+    ...at(3, [['aA', 0.6, 'sm'], ['aD', 1.6, 'sm'], ['aS', 2.6, 'sm'], ['aR', 3.6, 'sm']]),
+  } },
+  // Pulso A: blocos da esquerda para a direita como no painel (VCOs, ruído/S&H, VCF, ADSR/AR, VCA/mistura); os sliders são knobs
+  A: { cols: 6, grid: 12.4, rows: 4, at: {
+    ...at(0, [['v1Coarse', 0.6], ['v1Fine', 1.5, 'sm'], ['v1Fm1', 2.4, 'sm'], ['v1Fm2', 3.3, 'sm'],
+      ['fRing', 4.6, 'sm'], ['fV1', 5.4, 'sm'], ['fV2', 6.2, 'sm'], ['fV3', 7], ['fNoise', 7.8, 'sm'],
+      ['attack', 9.1, 'sm'], ['decay', 9.9, 'sm'], ['sustain', 10.7, 'sm'], ['release', 11.5, 'sm']]),
+    ...at(1, [['v2Coarse', 0.6], ['v2Fine', 1.5, 'sm'], ['v2Fm', 2.4, 'sm'], ['v2Adsr', 3.3, 'sm'],
+      ['cutoff', 5, 'lg'], ['fine', 6.2, 'sm'], ['res', 7.2], ['arA', 9.1, 'sm'], ['arR', 9.9, 'sm'], ['vcaInit', 10.7, 'sm'], ['vcaAr', 11.5, 'sm']]),
+    ...at(2, [['v2Pw', 0.6, 'sm'], ['v2Pwm', 1.5, 'sm'], ['sync', 2.4], ['v3Coarse', 3.5],
+      ['fAdsr', 4.6, 'sm'], ['fSine', 5.4, 'sm'], ['fKb', 6.2, 'sm'], ['noiseColor', 7.4], ['vcaRing', 9.1, 'sm'], ['reverb', 10.1], ['vol', 11.5]]),
+    ...at(3, [['v3Fine', 0.6, 'sm'], ['v3Fm', 1.5, 'sm'], ['v3Low', 2.4], ['v3Kb', 3.3], ['shRate', 4.6], ['porta', 5.8], ['tempo', 9.1], ['gateLen', 10.1, 'sm']]),
+  } },
 };
 
 for (const [key, t] of Object.entries(TYPES)) {
@@ -247,8 +326,8 @@ export function normMix(mix = {}) {
 }
 
 // Relógio: saída que cada tipo usa como relógio master e entrada que aceita um relógio externo
-export const CLOCK_OUT = { M: 'assign', D: 'trigOut', S: 'clockOut', L: 'clockOut' };
-export const CLOCK_IN = { M: 'tempo', D: 'adv', S: 'clock', L: 'clock' };
+export const CLOCK_OUT = { M: 'assign', D: 'trigOut', S: 'clockOut', L: 'clockOut', N: 'clockOut', A: 'clockOut' };
+export const CLOCK_IN = { M: 'tempo', D: 'adv', S: 'clock', L: 'clock', N: 'clock', A: 'clock' };
 const mod = (type, id, p = {}) => { const m = newModule(type, id); Object.assign(m.p, p); return m; };
 const FX = Object.fromEntries(FX_CONTROLS.map((c) => [c.id, c.def]));
 
@@ -342,6 +421,20 @@ PRESETS.push(
         sub1Lvl: 0.6, sub2Lvl: 0.5, sub3Lvl: 0.5, sub4Lvl: 0.4, cutoff: 0.4, vcfDecay: 0.5, vcaDecay: 0.55, tempo: 0.5,
       })],
       cables: [], fx: { ...FX },
+    }),
+  },
+  {
+    name: 'Baixo com sync', classic: true, about: 'N: dois osciladores com hard sync, o envelope do filtro a abrir o som e glide curto',
+    make: () => ({
+      mods: [mod('N', 'n1', { sync: 1, osc2Oct: 2, osc2Freq: 0.62, osc2Lvl: 0.8, osc1Lvl: 0.4, cutoff: 0.3, res: 0.45, egAmt: 0.85, fD: 0.3, fS: 0, glide: 0.15 })],
+      cables: [['n1', 'fEg', 'n1', 'lfoRate']], fx: { ...FX },
+    }),
+  },
+  {
+    name: 'Ring e S&H', classic: true, about: 'A: ring mod no filtro e sample & hold do ruído a mexer no corte (S/H → VCF FM)',
+    make: () => ({
+      mods: [mod('A', 'a1', { fRing: 0.6, fV1: 0.2, fV2: 0.3, v2Coarse: 0.62, res: 0.6, cutoff: 0.45, shRate: 0.6, reverb: 0.35 })],
+      cables: [['a1', 'sh', 'a1', 'vcfFm']], fx: { ...FX },
     }),
   },
 );

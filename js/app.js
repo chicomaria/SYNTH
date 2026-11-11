@@ -5,7 +5,9 @@ import { createStage } from './stage.js';
 import { TYPES, FX_CONTROLS, PRESETS, CLOCK_IN, CLOCK_OUT, newModule, normMix, randomParams, randomMSeq, randomCables, noteName } from './defs.js';
 
 const STORAGE_KEY = 'pulso-rack-v3';
-const DEFAULT_VIEW = { mode: 'rack', skin: 'pulso', knobs: 'arc', layout: 'original', vars: null, mixMin: false, scopeMin: false };
+const DEFAULT_VIEW = { mode: 'rack', skin: 'pulso', knobs: 'arc', layout: 'original', fit: 'fixed', fontScale: 1, knobScale: 1, vars: null, mixMin: false, scopeMin: false };
+// Ícone de aleatório: duas setas a cruzar (shuffle), desenhado em CSS para seguir as cores da skin
+const SHUFFLE = '<i class="ico-shuffle"></i>';
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, html) => {
   const e = document.createElement(tag);
@@ -160,8 +162,8 @@ function renderModule(m) {
     tools.appendChild(u.runBtn);
   }
   tools.append(
-    btn('⚄ knobs', 'Knobs aleatórios neste módulo', () => randomizeKnobs(m)),
-    btn('⚄ seq', 'Sequência aleatória neste módulo', () => randomizeSeq(m)),
+    btn(`${SHUFFLE} knobs`, 'Knobs aleatórios neste módulo', () => randomizeKnobs(m)),
+    btn(`${SHUFFLE} seq`, 'Sequência aleatória neste módulo', () => randomizeSeq(m)),
     (u.minBtn = btn(m.min ? '▸' : '▾', 'Minimizar / expandir', () => setMin(m, !m.min), 'min-btn')),
     btn('✕', 'Remover módulo', () => removeModule(m.id)),
   );
@@ -342,6 +344,7 @@ function renderRack() {
   applyView();
   applyZoom();
   syncMode();
+  syncClockBtn();
 }
 
 let counter = 0;
@@ -404,7 +407,7 @@ function refreshModule(m) {
 function randomizeKnobs(m) { Object.assign(m.p, randomParams(m.type, false)); refreshModule(m); }
 function randomizeSeq(m) {
   Object.assign(m.p, randomParams(m.type, true));
-  if (m.type === 'M') {
+  if (TYPES[m.type].custom === 'mseq') {
     m.data.steps = randomMSeq(m.data.len);
     engine.send({ t: 'data', id: m.id, k: 'steps', v: m.data.steps });
   }
@@ -416,6 +419,35 @@ $('rand-seq').addEventListener('click', () => { if (inStage()) stage.randomSeq()
 $('rand-patch').addEventListener('click', () => {
   if (inStage()) { stage.randomPatch(); return; } // no modo ícones, o patch aleatório espalha os módulos e a proximidade faz os cabos
   state.cables = randomCables(state.mods); pending = null; cablesChanged(); renderCables();
+});
+
+// Ligar o relógio master à entrada de relógio de todos os módulos (se já estiverem todos ligados, tira esses cabos)
+function clockLinks() {
+  const master = clockMaster();
+  if (!master) return [];
+  return state.mods.filter((m) => m !== master && CLOCK_IN[m.type]).map((m) => [master.id, CLOCK_OUT[master.type], m.id, CLOCK_IN[m.type]]);
+}
+const sameCable = (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
+function clockAllLinked() {
+  const links = clockLinks();
+  return links.length > 0 && links.every((l) => state.cables.some((c) => sameCable(c, l)));
+}
+function syncClockBtn() { $('link-clock').classList.toggle('on', clockAllLinked()); }
+$('link-clock').addEventListener('click', () => {
+  const links = clockLinks();
+  if (!links.length) return;
+  if (clockAllLinked()) state.cables = state.cables.filter((c) => !links.some((l) => sameCable(c, l)));
+  else links.forEach((l) => { if (!state.cables.some((c) => sameCable(c, l))) state.cables.push(l); });
+  pending = null; cablesChanged(); renderCables();
+  if (inStage()) stage.render();
+});
+// Todos os knobs dos módulos ao meio-dia (0.5); interruptores, mixer e efeitos ficam como estão
+$('knobs-noon').addEventListener('click', () => {
+  state.mods.forEach((m) => {
+    TYPES[m.type].params.forEach((c) => { if (c.type === 'knob') m.p[c.id] = 0.5; });
+    refreshModule(m);
+  });
+  if (inStage()) stage.render();
 });
 
 // ---------- Cabos ----------
@@ -441,6 +473,7 @@ function clickJack(key) {
 }
 function cablesChanged() {
   engine.send({ t: 'cables', list: state.cables });
+  syncClockBtn();
   save();
 }
 
@@ -711,9 +744,10 @@ $('toggle-scope').addEventListener('click', () => { state.view.scopeMin = !state
 // ---------- Menu visual: skin, estilo dos knobs e layout ----------
 const VIEW_OPTIONS = {
   mode: [['rack', 'Rack'], ['stage', 'Ícones']],
-  skin: [['pulso', 'Pulso'], ['classic', 'Clássico'], ['funky', 'Funky'], ['seventies', 'Anos 70'], ['random', '⚄ Aleatório']],
-  knobs: [['arc', 'Arco'], ['solid', 'Clássico'], ['random', '⚄ Aleatório']],
+  skin: [['pulso', 'Pulso'], ['classic', 'Clássico'], ['funky', 'Funky'], ['seventies', 'Anos 70'], ['random', `${SHUFFLE} Aleatório`]],
+  knobs: [['arc', 'Arco'], ['solid', 'Clássico'], ['random', `${SHUFFLE} Aleatório`]],
   layout: [['original', 'Clássico'], ['compact', 'Compacto']],
+  fit: [['fixed', 'Fixa'], ['fit', 'Ajustar à gaveta']],
 };
 const hsl = (h, s, l) => `hsl(${((h % 360) + 360) % 360} ${s}% ${l}%)`;
 function randomSkinVars() {
@@ -732,7 +766,12 @@ function applyView() {
   const v = state.view, root = document.documentElement;
   root.dataset.skin = v.skin;
   root.dataset.layout = v.layout;
+  root.dataset.fit = v.fit;
   root.removeAttribute('style');
+  root.style.setProperty('--label-scale', v.fontScale);
+  root.style.setProperty('--knob-scale', v.knobScale);
+  $('font-label').textContent = `${Math.round(v.fontScale * 100)}%`;
+  $('ksize-label').textContent = `${Math.round(v.knobScale * 100)}%`;
   if (v.skin === 'random') {
     if (!v.vars) v.vars = randomSkinVars();
     Object.entries(v.vars).forEach(([k, val]) => root.style.setProperty(k, val));
@@ -746,7 +785,7 @@ function applyView() {
       k.style.setProperty('--cap', hsl(h + 180, 45, 28));
     } else { k.style.removeProperty('--accent'); k.style.removeProperty('--cap'); }
   });
-  document.querySelectorAll('#view-menu button').forEach((b) => b.classList.toggle('on', v[b.dataset.key] === b.dataset.value));
+  document.querySelectorAll('#view-menu button[data-key]').forEach((b) => b.classList.toggle('on', v[b.dataset.key] === b.dataset.value));
 }
 Object.entries(VIEW_OPTIONS).forEach(([key, options]) => {
   const row = $(`view-${key}`);
@@ -762,6 +801,18 @@ Object.entries(VIEW_OPTIONS).forEach(([key, options]) => {
     b.dataset.key = key; b.dataset.value = value;
     row.appendChild(b);
   });
+});
+// Tamanho dos nomes dos knobs e dos próprios knobs: − valor +
+[['font', 'fontScale', 'nomes dos knobs'], ['ksize', 'knobScale', 'knobs']].forEach(([id, key, what]) => {
+  const step = (d) => {
+    state.view[key] = Math.min(2, Math.max(0.6, Math.round((state.view[key] + d) * 10) / 10));
+    applyView(); renderCables(); save();
+  };
+  $(`view-${id}`).append(
+    btn('−', `Diminuir ${what}`, () => step(-0.1)),
+    Object.assign(el('span', 'readout'), { id: `${id}-label` }),
+    btn('+', `Aumentar ${what}`, () => step(0.1)),
+  );
 });
 $('view-btn').addEventListener('click', () => { $('view-menu').hidden = !$('view-menu').hidden; });
 document.addEventListener('pointerdown', (e) => {

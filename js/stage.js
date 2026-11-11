@@ -5,7 +5,7 @@
 
 import { TYPES, FX_CONTROLS } from './defs.js';
 
-const HUE = { M: 30, D: 340, S: 140, L: 200, X: 280, FX: 55 };
+const HUE = { M: 30, D: 340, S: 140, L: 200, X: 280, N: 10, A: 100, FX: 55 };
 const F = 22; // alcance do ícone dentro do campo, em px
 const ICON = 38, CORE = 64, FIELD = 2 * F + ICON, SPACING = 90;
 const LINK = [120, 180, 240]; // distância entre núcleos para 3, 2 e 1 cabos
@@ -102,6 +102,29 @@ const SPEC = {
     A('wave', 'Onda', 'wave', 10, null, null, { cycle: ['vcoWave'] }),
     ...MIXICONS,
   ],
+  N: [
+    A('osc', 'Osciladores', 'osc', 30, 'osc1Wave', 'osc2Freq'),
+    A('vcf', 'Filtro', 'filter', 200, 'cutoff', 'res'),
+    A('lfo', 'Movimento', 'lfo', 280, 'lfoRate', ['lfoCut', 'lfoPitch']),
+    A('env', 'Envelopes', 'env', 140, ['fD', 'aD'], 'egAmt'),
+    A('tempo', 'Tempo', 'tempo', 60, 'tempo', 'gateLen'),
+    A('seq', 'Sequência', 'seq', 330, null, null, { seq: true, xl: 'densidade', yl: 'alcance' }),
+    A('wave', 'Sync', 'wave', 10, null, null, { cycle: ['sync'] }),
+    ...MIXICONS,
+    A('run', 'Tocar', 'run', 120, null, null, { run: true }),
+  ],
+  A: [
+    A('osc1', 'VCO 1', 'osc', 30, 'v1Coarse', 'v1Fm1'),
+    A('osc2', 'VCO 2', 'osc', 50, 'v2Coarse', 'v2Pw'),
+    A('ring', 'Ring / ruído', 'fm', 300, 'fRing', 'fNoise'),
+    A('vcf', 'Filtro', 'filter', 200, 'cutoff', 'res'),
+    A('env', 'Envelopes', 'env', 140, 'decay', 'fAdsr'),
+    A('tempo', 'Tempo', 'tempo', 60, 'tempo', 'gateLen'),
+    A('seq', 'Sequência', 'seq', 330, null, null, { seq: true, xl: 'densidade', yl: 'alcance' }),
+    A('wave', 'Sync', 'wave', 10, null, null, { cycle: ['sync'] }),
+    ...MIXICONS,
+    A('run', 'Tocar', 'run', 120, null, null, { run: true }),
+  ],
   FX: [
     A('delay', 'Delay', 'delay', 55, 'delayTime', 'delayFb'),
     A('send', 'Envios', 'reverb', 200, 'delayMix', 'reverb'),
@@ -115,6 +138,8 @@ const ROLES = {
   D: { clockOut: ['trigOut'], audioOut: ['vca', 'vco1'], cvOut: ['vcaEg', 'vcfEg', 'vcoEg', 'velOut'], clockIn: ['adv'], audioIn: ['ext'], cvIn: ['vcfMod', 'vco1Cv', 'fmAmt', 'vco2Cv'] },
   S: { clockOut: ['clockOut', 'seq1Clk'], audioOut: ['vcaOut', 'vco1'], cvOut: ['seq1', 'seq2', 'vcfEg', 'vcaEg'], clockIn: ['clock'], audioIn: [], cvIn: ['cutoff', 'vco1', 'vco2', 'rhythm1'] },
   L: { clockOut: ['clockOut', 'trig1Out'], audioOut: ['vca', 'foldOut'], cvOut: ['seq1', 'seq2', 'eg1', 'eg2'], clockIn: ['clock'], audioIn: ['audio'], cvIn: ['cutoff', 'vcoCv', 'fold', 'fmAmt'] },
+  N: { clockOut: ['clockOut'], audioOut: ['vca', 'vcf'], cvOut: ['fEg', 'lfo', 'kb', 'aEg'], clockIn: ['clock'], audioIn: ['ext'], cvIn: ['cutoff', 'voct', 'vcaCv', 'lfoRate'] },
+  A: { clockOut: ['clockOut'], audioOut: ['vca', 'ring'], cvOut: ['adsr', 'sh', 'kb', 'ar'], clockIn: ['clock'], audioIn: ['vcfIn', 'ringA'], cvIn: ['vcfFm', 'v1Fm', 'v2Pwm', 'v2Fm'] },
   X: { clockOut: [], audioOut: ['out', 'vco'], cvOut: ['env', 'lfo'], clockIn: [], audioIn: ['program', 'carrier'], cvIn: ['shiftCv', 'voct', 'lfoRate', 'band1'] },
 };
 function routes(S, T) {
@@ -180,7 +205,7 @@ export function createStage(ctx) {
     const seed = hash(entry.id) + (S().seed[entry.id] || 1) * 7919;
     const r = rng(seed);
     const set = (k, v) => ctx.setParam(m, k, v);
-    if (m.type === 'M') {
+    if (m.type === 'M' || m.type === 'N' || m.type === 'A') {
       const scale = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22, 24], avail = Math.min(scale.length, 2 + Math.round(vy * 9));
       const steps = Array.from({ length: 32 }, (_, i) => {
         const a = r(), b = r();
