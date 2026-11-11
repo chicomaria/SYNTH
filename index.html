@@ -36,9 +36,11 @@
       <span class="group" id="add-buttons"><span class="group-label">Adicionar</span></span>
       <span class="group">
         <span class="group-label">Aleatório</span>
-        <button id="rand-patch" title="Cabos aleatórios entre todos os módulos">⚄ patch</button>
-        <button id="rand-seq" title="Sequências aleatórias em todos os módulos">⚄ sequência</button>
-        <button id="rand-knobs" title="Knobs aleatórios em todos os módulos">⚄ knobs</button>
+        <button id="rand-patch" title="Cabos aleatórios entre todos os módulos"><i class="ico-shuffle"></i> patch</button>
+        <button id="rand-seq" title="Sequências aleatórias em todos os módulos"><i class="ico-shuffle"></i> sequência</button>
+        <button id="rand-knobs" title="Knobs aleatórios em todos os módulos"><i class="ico-shuffle"></i> knobs</button>
+        <button id="link-clock" title="Liga o relógio master (o do 1.º módulo do rack) à entrada de relógio de todos os módulos. Se já estiverem todos ligados, tira esses cabos.">⏱ ligar clock</button>
+        <button id="knobs-noon" title="Põe todos os knobs dos módulos ao meio-dia (posição central)">◴ knobs 12h</button>
       </span>
       <span class="group">
         <button id="toggle-mixer" title="Minimizar / mostrar o mixer">▾ Mixer</button>
@@ -55,6 +57,9 @@
           <span class="group-label">Skin</span><div id="view-skin" class="group"></div>
           <span class="group-label">Knobs</span><div id="view-knobs" class="group"></div>
           <span class="group-label">Layout</span><div id="view-layout" class="group"></div>
+          <span class="group-label">Largura</span><div id="view-fit" class="group"></div>
+          <span class="group-label">Nomes</span><div id="view-font" class="group stepper"></div>
+          <span class="group-label">Tam. knobs</span><div id="view-ksize" class="group stepper"></div>
         </div>
       </span>
     </div>

@@ -19,6 +19,8 @@
   --scope-grid: #2a2d33;
   --mod-w: 1040px;
   --row-h: 92px;
+  --label-scale: 1;
+  --knob-scale: 1;
   color-scheme: dark;
 }
 
@@ -332,3 +334,34 @@ button:focus-visible, .knob-dial:focus-visible { outline: 2px solid var(--accent
   background: var(--panel-2); color: var(--text); border: 1px solid var(--line); box-shadow: 0 4px 12px #0008;
 }
 .st-tip[hidden] { display: none; }
+
+/* ---------- Tamanho dos nomes e dos knobs (menu Visual), só nos módulos do rack ---------- */
+#rack .knob { width: calc(50px * max(1, var(--knob-scale))); }
+#rack .knob-dial { width: calc(32px * var(--knob-scale)); height: calc(32px * var(--knob-scale)); }
+#rack .knob-lg .knob-dial { width: calc(40px * var(--knob-scale)); height: calc(40px * var(--knob-scale)); }
+#rack .knob-sm { width: calc(38px * max(1, var(--knob-scale))); }
+#rack .knob-sm .knob-dial { width: calc(26px * var(--knob-scale)); height: calc(26px * var(--knob-scale)); }
+#rack .knob-label { font-size: calc(7.5px * var(--label-scale)); }
+#rack .lever-opts, #rack .switch-opts button { font-size: calc(7px * var(--label-scale)); }
+/* layout clássico: a altura das filas e a largura dos módulos crescem com os knobs para não se sobreporem */
+#rack .controls.panel { --row-h: calc(92px * max(1, (var(--knob-scale) + var(--label-scale) * 0.3) / 1.3)); }
+#rack .panel .knob .knob-dial { width: calc(var(--dial) * var(--knob-scale)); height: calc(var(--dial) * var(--knob-scale)); }
+#rack .panel .at { width: calc(66px * max(1, var(--knob-scale))); top: calc((var(--y) + 0.4) * var(--row-h) - var(--dial) * var(--knob-scale) / 2); }
+#rack .lever-body { height: calc(var(--dial, 26px) * var(--knob-scale)); }
+[data-layout="original"] #rack { --mod-w: calc(1040px * max(1, var(--knob-scale))); }
+
+/* Ajustar à gaveta: cada módulo estica até encher a largura da fila do rack */
+[data-layout="original"][data-fit="fit"] #rack-wrap { min-width: 0; }
+[data-layout="original"][data-fit="fit"] .mod { flex: 1 1 calc(var(--mod-w) * 0.75); width: auto; min-width: min(100%, calc(var(--mod-w) * 0.7)); }
+[data-layout="original"][data-fit="fit"] .controls.panel { min-width: calc(var(--mod-w) * 0.45); }
+[data-layout="compact"][data-fit="fit"] #rack { grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); }
+
+/* Passos − valor + no menu Visual */
+.stepper button { min-width: 26px; }
+
+/* Ícone de aleatório: duas setas a cruzar */
+.ico-shuffle {
+  display: inline-block; width: 1.15em; height: 1.15em; vertical-align: -0.22em; background: currentColor;
+  -webkit-mask: var(--shuffle) center / contain no-repeat; mask: var(--shuffle) center / contain no-repeat;
+  --shuffle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5'/%3E%3C/svg%3E");
+}
