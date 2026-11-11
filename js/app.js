@@ -1,8 +1,8 @@
-import { Engine } from './engine.js';
-import { Knob } from './knob.js';
-import { Scope } from './scope.js';
-import { createStage } from './stage.js';
-import { TYPES, FX_CONTROLS, PRESETS, CLOCK_IN, CLOCK_OUT, newModule, normMix, randomParams, randomMSeq, randomCables, noteName } from './defs.js';
+import { Engine } from './engine.js?v=11';
+import { Knob } from './knob.js?v=11';
+import { Scope } from './scope.js?v=11';
+import { createStage } from './stage.js?v=11';
+import { TYPES, FX_CONTROLS, PRESETS, CLOCK_IN, CLOCK_OUT, newModule, normMix, randomParams, randomMSeq, randomCables, noteName } from './defs.js?v=11';
 
 const STORAGE_KEY = 'pulso-rack-v3';
 const DEFAULT_VIEW = { mode: 'rack', skin: 'pulso', knobs: 'arc', layout: 'original', fit: 'fixed', fontScale: 1, knobScale: 1, vars: null, mixMin: false, scopeMin: false };
@@ -421,7 +421,7 @@ $('rand-patch').addEventListener('click', () => {
   state.cables = randomCables(state.mods); pending = null; cablesChanged(); renderCables();
 });
 
-// Ligar o relógio master à entrada de relógio de todos os módulos (se já estiverem todos ligados, tira esses cabos)
+// Ligar o relógio master (o do 1.º módulo do rack) à entrada de relógio de todos os outros módulos que lá estão agora
 function clockLinks() {
   const master = clockMaster();
   if (!master) return [];
@@ -436,10 +436,11 @@ function syncClockBtn() { $('link-clock').classList.toggle('on', clockAllLinked(
 $('link-clock').addEventListener('click', () => {
   const links = clockLinks();
   if (!links.length) return;
-  if (clockAllLinked()) state.cables = state.cables.filter((c) => !links.some((l) => sameCable(c, l)));
-  else links.forEach((l) => { if (!state.cables.some((c) => sameCable(c, l))) state.cables.push(l); });
+  links.forEach((l) => { if (!state.cables.some((c) => sameCable(c, l))) state.cables.push(l); });
   pending = null; cablesChanged(); renderCables();
   if (inStage()) stage.render();
+  const master = clockMaster();
+  $('patch-hint').textContent = `Clock: ${TYPES[master.type].name} (1.º módulo) a comandar ${links.length} módulo(s).`;
 });
 // Todos os knobs dos módulos ao meio-dia (0.5); interruptores, mixer e efeitos ficam como estão
 $('knobs-noon').addEventListener('click', () => {
@@ -448,6 +449,7 @@ $('knobs-noon').addEventListener('click', () => {
     refreshModule(m);
   });
   if (inStage()) stage.render();
+  $('patch-hint').textContent = 'Knobs de todos os módulos ao meio-dia.';
 });
 
 // ---------- Cabos ----------
