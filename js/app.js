@@ -2,10 +2,10 @@ import { Engine } from './engine.js';
 import { Knob } from './knob.js';
 import { Scope } from './scope.js';
 import { createStage } from './stage.js';
-import { TYPES, FX_CONTROLS, PRESETS, newModule, randomParams, randomMSeq, randomCables, noteName } from './defs.js';
+import { TYPES, FX_CONTROLS, PRESETS, CLOCK_IN, CLOCK_OUT, newModule, normMix, randomParams, randomMSeq, randomCables, noteName } from './defs.js';
 
 const STORAGE_KEY = 'pulso-rack-v3';
-const DEFAULT_VIEW = { mode: 'rack', skin: 'pulso', knobs: 'arc', layout: 'original', vars: null };
+const DEFAULT_VIEW = { mode: 'rack', skin: 'pulso', knobs: 'arc', layout: 'original', vars: null, mixMin: false, scopeMin: false };
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, html) => {
   const e = document.createElement(tag);
@@ -27,7 +27,7 @@ function loadState() {
     if (s && Array.isArray(s.mods) && s.mods.every((m) => TYPES[m.type])) {
       s.mods.forEach((m) => {
         m.p = { ...TYPES[m.type].defaults, ...m.p, run: 0 };
-        m.mix = { level: 0.8, pan: 0.5, send: 0.25, ...m.mix };
+        m.mix = normMix(m.mix);
       });
       return { zoom: 1, cables: [], ...s, view: { ...DEFAULT_VIEW, ...s.view } };
     }
@@ -104,6 +104,30 @@ function buildControl(c, get, set) {
     refresh();
     return { el: b, refresh };
   }
+  if (c.lever) {
+    // interruptor de alavanca com o tamanho de um knob pequeno; as posições ficam escritas ao lado
+    const wrap = el('div', 'switch lever');
+    const body = el('div', 'lever-body');
+    const lever = el('button', 'lever-btn', '<span class="lever-tip"></span>');
+    lever.title = `${c.label}: ${c.options.join(' / ')}`;
+    const names = el('div', 'lever-opts');
+    const spans = c.options.map((label, i) => {
+      const sp = el('span', '', label);
+      sp.addEventListener('click', () => { set(i); refresh(); });
+      names.appendChild(sp);
+      return sp;
+    });
+    lever.addEventListener('click', () => { set((get() + 1) % c.options.length); refresh(); });
+    const refresh = () => {
+      const v = get(), n = c.options.length;
+      lever.style.setProperty('--pos', n > 1 ? v / (n - 1) : 0);
+      spans.forEach((sp, i) => sp.classList.toggle('on', i === v));
+    };
+    body.append(lever, names);
+    wrap.append(body, el('div', 'knob-label', c.label));
+    refresh();
+    return { el: wrap, refresh };
+  }
   const wrap = el('div', 'switch');
   const opts = el('div', 'switch-opts');
   const buttons = c.options.map((label, i) => {
@@ -138,11 +162,12 @@ function renderModule(m) {
   tools.append(
     btn('⚄ knobs', 'Knobs aleatórios neste módulo', () => randomizeKnobs(m)),
     btn('⚄ seq', 'Sequência aleatória neste módulo', () => randomizeSeq(m)),
-    btn('–', 'Minimizar / expandir', () => { m.min = !m.min; box.classList.toggle('min', m.min); save(); renderCables(); }),
+    (u.minBtn = btn(m.min ? '▸' : '▾', 'Minimizar / expandir', () => setMin(m, !m.min), 'min-btn')),
     btn('✕', 'Remover módulo', () => removeModule(m.id)),
   );
   head.appendChild(tools);
   box.appendChild(head);
+  u.head = head;
 
   const body = el('div', 'mod-body');
   // Controlos
@@ -153,26 +178,34 @@ function renderModule(m) {
     return built.el;
   };
   const custom = t.custom ? CUSTOM[t.custom](m, u) : null;
+  let customPlaced = false;
   if (state.view.layout === 'original') {
-    // linhas pela ordem do painel do hardware
-    controls.classList.add('rows');
+    // layout clássico: cada controlo na sua posição do painel, com três tamanhos (grande, médio, pequeno)
+    controls.classList.add('panel');
+    controls.style.setProperty('--rows', t.rows);
     const byId = Object.fromEntries(t.params.map((c) => [c.id, c]));
-    let customPlaced = false;
-    t.rows.forEach((ids) => {
-      const row = el('div', 'row');
-      ids.forEach((id) => {
-        if (id === '@custom') { if (custom) { row.appendChild(custom); customPlaced = true; } }
-        else row.appendChild(build(byId[id]));
-      });
-      controls.appendChild(row);
+    Object.entries(t.at).forEach(([id, [x, y, size]]) => {
+      let node, sz;
+      if (id === '@custom') {
+        if (!custom || t.customWide) return;
+        node = custom; customPlaced = true; sz = size || 'sm';
+      } else {
+        const c = byId[id];
+        sz = size || (c.type === 'knob' ? c.size || 'md' : 'sm');
+        node = build({ ...c, size: sz, lever: c.type === 'switch' });
+      }
+      node.classList.add('at', `at-${sz}`);
+      node.style.left = `${(x / t.grid) * 100}%`;
+      node.style.setProperty('--y', y);
+      controls.appendChild(node);
     });
-    if (custom && !customPlaced && !t.customWide) controls.appendChild(custom);
     patchCols = t.cols;
   } else {
     t.controls.forEach((c) => controls.appendChild(build(c)));
-    if (custom && !t.customWide) controls.appendChild(custom);
     patchCols = 0;
   }
+  const panel = state.view.layout === 'original';
+  if (custom && !panel && !t.customWide) { controls.appendChild(custom); customPlaced = true; }
   body.appendChild(controls);
 
   // Patch bay
@@ -184,12 +217,12 @@ function renderModule(m) {
     b.title = `${j.out ? 'Saída' : 'Entrada'}: ${j.label}`;
     b.addEventListener('click', () => clickJack(key));
     u.jacks[key] = b;
-    jackInfo[key] = { mod: m.id, jack: j.id, out: !!j.out, label: j.label };
+    jackInfo[key] = { mod: m.id, jack: j.id, out: !!j.out, label: j.label, idx: t.jacks.indexOf(j), n: t.jacks.length };
     patch.appendChild(b);
   });
   body.appendChild(patch);
   box.appendChild(body);
-  if (custom && t.customWide) { custom.classList.add('wide'); box.appendChild(custom); }
+  if (custom && !customPlaced) { custom.classList.add('wide'); box.appendChild(custom); }
 
   const lit = t.lit;
   const prev = u.onStatus;
@@ -319,12 +352,20 @@ function addModule(type) {
   state.mods.push(m);
   renderModule(m);
   engine.addModule(m);
+  // o relógio master é sempre o do 1.º módulo do rack: liga-o à entrada de relógio do módulo novo
+  const master = clockMaster();
+  if (master && master !== m && CLOCK_IN[type]) {
+    state.cables.push([master.id, CLOCK_OUT[master.type], id, CLOCK_IN[type]]);
+    cablesChanged();
+  }
   save();
   renderMixer();
   applyView();
   renderCables();
   if (inStage()) stage.render(); else ui[id].el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
+// 1.º módulo do rack com saída de relógio (o Pulso X não tem; se for o primeiro, passa ao seguinte)
+function clockMaster() { return state.mods.find((x) => CLOCK_OUT[x.type]); }
 function removeModule(id) {
   state.mods = state.mods.filter((m) => m.id !== id);
   state.cables = state.cables.filter((c) => c[0] !== id && c[2] !== id);
@@ -339,6 +380,17 @@ function removeModule(id) {
   renderTransport();
   renderCables();
   if (inStage()) stage.render();
+}
+
+// Minimizado, o módulo fica só com o cabeçalho; os cabos passam a terminar na barra do cabeçalho
+function setMin(m, min) {
+  m.min = min;
+  const u = ui[m.id];
+  u.el.classList.toggle('min', min);
+  u.minBtn.textContent = min ? '▸' : '▾';
+  if (pending && jackInfo[pending]?.mod === m.id) pending = null;
+  save();
+  renderCables();
 }
 
 function refreshModule(m) {
@@ -398,8 +450,13 @@ const wrapEl = $('rack-wrap');
 function renderCables() {
   const host = wrapEl.getBoundingClientRect();
   const center = (modId, jack, out) => {
-    const b = ui[modId]?.jacks[`${modId}:${out ? 'o' : 'i'}:${jack}`];
+    const key = `${modId}:${out ? 'o' : 'i'}:${jack}`, u = ui[modId], b = u?.jacks[key];
     if (!b) return null;
+    if (getMod(modId)?.min) {
+      // módulo minimizado: o cabo termina na base do cabeçalho, na posição relativa da tomada no patch bay
+      const r = u.head.getBoundingClientRect(), j = jackInfo[key];
+      return [r.left + 12 + ((j.idx + 0.5) / j.n) * (r.width - 24) - host.left, r.bottom - host.top, 12 * (state.zoom || 1), true];
+    }
     const r = b.querySelector('.hole').getBoundingClientRect();
     return [r.left + r.width / 2 - host.left, r.top + r.height / 2 - host.top, r.width];
   };
@@ -410,11 +467,14 @@ function renderCables() {
     const p1 = center(a, out, true), p2 = center(b, inn, false);
     if (!p1 || !p2) return '';
     used.add(`${a}:o:${out}`); used.add(`${b}:i:${inn}`);
-    const [x1, y1, w] = p1, [x2, y2] = p2;
+    const [x1, y1, w1, min1] = p1, [x2, y2, w2, min2] = p2, w = Math.max(w1, w2);
     const sag = Math.min(70, 16 + Math.hypot(x2 - x1, y2 - y1) * 0.22);
     const color = CABLE_COLORS[i % CABLE_COLORS.length];
+    const end = (x, y, ww, min) => (min
+      ? `<rect x="${x - ww * 0.3}" y="${y - ww * 0.3}" width="${ww * 0.6}" height="${ww * 0.6}" rx="2" fill="${color}" />`
+      : `<circle cx="${x}" cy="${y}" r="${ww * 0.3}" fill="${color}" />`);
     return `<path d="M ${x1} ${y1} C ${x1} ${y1 + sag}, ${x2} ${y2 + sag}, ${x2} ${y2}" stroke="${color}" stroke-width="${Math.max(2, w * 0.28)}" />
-      <circle cx="${x1}" cy="${y1}" r="${w * 0.3}" fill="${color}" /><circle cx="${x2}" cy="${y2}" r="${w * 0.3}" fill="${color}" />`;
+      ${end(x1, y1, w1, min1)}${end(x2, y2, w2, min2)}`;
   }).join('');
   Object.values(ui).forEach((u) => Object.entries(u.jacks).forEach(([key, b]) => {
     b.classList.toggle('pending', pending === key);
@@ -475,7 +535,7 @@ function loadRack(data) {
   rackData.mods = (rackData.mods || []).filter((m) => TYPES[m.type]);
   rackData.mods.forEach((m) => {
     m.p = { ...TYPES[m.type].defaults, ...m.p, run: running && TYPES[m.type].hasRun ? 1 : 0 };
-    m.mix = { level: 0.8, pan: 0.5, send: 0.25, ...m.mix };
+    m.mix = normMix(m.mix);
     m.data = m.data || (TYPES[m.type].data ? TYPES[m.type].data() : {});
   });
   const ids = new Set(rackData.mods.map((m) => m.id));
@@ -562,30 +622,55 @@ document.addEventListener('pointerdown', (e) => {
 renderBank();
 
 // ---------- Mixer: um canal por módulo, efeitos e master ----------
+// De cima para baixo: FX1 (envio para o reverb), FX2 (envio para o delay), PAN e LEVEL
 const MIX_CONTROLS = [
-  { type: 'knob', id: 'level', label: 'LEVEL', def: 0.8 },
+  { type: 'knob', id: 'fx1', label: 'FX1 REV', def: 0.25, size: 'sm' },
+  { type: 'knob', id: 'fx2', label: 'FX2 DLY', def: 0.25, size: 'sm' },
   { type: 'knob', id: 'pan', label: 'PAN', def: 0.5, bipolar: true },
-  { type: 'knob', id: 'send', label: 'FX SEND', def: 0.25 },
+  { type: 'knob', id: 'level', label: 'LEVEL', def: 0.8 },
 ];
+const sendMix = (m) => engine.send({ t: 'mix', id: m.id, v: m.mix });
 function renderMixer() {
   const mixer = $('mixer');
   mixer.innerHTML = '';
   Object.keys(leds).forEach((k) => delete leds[k]);
   const count = {};
+  const channels = [];
+  const markMuted = () => {
+    const anySolo = state.mods.some((m) => m.mix.solo);
+    channels.forEach(([m, ch]) => ch.classList.toggle('muted', !!m.mix.mute || (anySolo && !m.mix.solo)));
+  };
   state.mods.forEach((m) => {
     count[m.type] = (count[m.type] || 0) + 1;
     const ch = el('div', 'channel');
+    channels.push([m, ch]);
     const name = el('div', 'ch-name', `<span class="sig"></span>${m.type} ${count[m.type]}`);
     leds[m.id] = name.querySelector('.sig');
     ch.appendChild(name);
-    // de cima para baixo: FX SEND, PAN, LEVEL
-    [...MIX_CONTROLS].reverse().forEach((c) => ch.appendChild(buildControl(c, () => m.mix[c.id], (v) => {
+    const flag = (key, label, title) => {
+      const b = btn(label, title, () => {
+        m.mix[key] = m.mix[key] ? 0 : 1;
+        b.classList.toggle('on', !!m.mix[key]);
+        sendMix(m); save(); markMuted();
+      }, `ch-btn ch-${key}`);
+      b.classList.toggle('on', !!m.mix[key]);
+      return b;
+    };
+    const row = el('div', 'ch-btns');
+    row.append(
+      flag('mute', 'M', 'Mute'),
+      flag('solo', 'S', 'Solo (podes ter vários canais em solo)'),
+      btn('↧', 'Ir para o módulo no rack', () => locate(m), 'ch-btn'),
+    );
+    ch.appendChild(row);
+    MIX_CONTROLS.forEach((c) => ch.appendChild(buildControl(c, () => m.mix[c.id], (v) => {
       m.mix[c.id] = v;
-      engine.send({ t: 'mix', id: m.id, v: m.mix });
+      sendMix(m);
       save();
     }).el));
     mixer.appendChild(ch);
   });
+  markMuted();
   const fx = el('div', 'channel fx');
   fx.appendChild(el('div', 'ch-name', 'FX · MASTER'));
   const knobs = el('div', 'fx-grid');
@@ -596,12 +681,39 @@ function renderMixer() {
   $('mixer-fx').replaceChildren(fx);
 }
 
+// Leva o rack até ao módulo e assinala-o por um instante
+function locate(m) {
+  const box = ui[m.id]?.el;
+  if (!box || inStage()) return;
+  box.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+  box.classList.remove('flash');
+  void box.offsetWidth;
+  box.classList.add('flash');
+}
+// A altura do topo fixo, para o scroll não esconder o módulo por baixo dele
+const topEl = document.querySelector('.top');
+new ResizeObserver(() => document.documentElement.style.setProperty('--top-h', `${topEl.offsetHeight}px`)).observe(topEl);
+
+// Minimizar o mixer e o osciloscópio
+function applyPanels() {
+  const v = state.view;
+  document.documentElement.dataset.mixMin = v.mixMin ? '1' : '0';
+  document.documentElement.dataset.scopeMin = v.scopeMin ? '1' : '0';
+  $('toggle-mixer').textContent = `${v.mixMin ? '▸' : '▾'} Mixer`;
+  $('toggle-scope').textContent = `${v.scopeMin ? '▸' : '▾'} Scope`;
+  $('toggle-mixer').classList.toggle('on', !v.mixMin);
+  $('toggle-scope').classList.toggle('on', !v.scopeMin);
+  renderCables();
+}
+$('toggle-mixer').addEventListener('click', () => { state.view.mixMin = !state.view.mixMin; applyPanels(); save(); });
+$('toggle-scope').addEventListener('click', () => { state.view.scopeMin = !state.view.scopeMin; applyPanels(); save(); });
+
 // ---------- Menu visual: skin, estilo dos knobs e layout ----------
 const VIEW_OPTIONS = {
   mode: [['rack', 'Rack'], ['stage', 'Ícones']],
   skin: [['pulso', 'Pulso'], ['classic', 'Clássico'], ['funky', 'Funky'], ['seventies', 'Anos 70'], ['random', '⚄ Aleatório']],
   knobs: [['arc', 'Arco'], ['solid', 'Clássico'], ['random', '⚄ Aleatório']],
-  layout: [['original', 'Original'], ['compact', 'Compacto']],
+  layout: [['original', 'Clássico'], ['compact', 'Compacto']],
 };
 const hsl = (h, s, l) => `hsl(${((h % 360) + 360) % 360} ${s}% ${l}%)`;
 function randomSkinVars() {
@@ -657,6 +769,7 @@ document.addEventListener('pointerdown', (e) => {
 });
 
 renderRack();
+applyPanels();
 scope.drawIdle();
 
 // Acesso para depuração na consola do browser

@@ -21,7 +21,7 @@ export class Engine {
     const AC = window.AudioContext || window.webkitAudioContext;
     const ctx = new AC({ latencyHint: 'interactive' });
     await ctx.audioWorklet.addModule('js/worklet.js');
-    this.node = new AudioWorkletNode(ctx, 'pulso', { numberOfInputs: 0, numberOfOutputs: 2, outputChannelCount: [2, 1] });
+    this.node = new AudioWorkletNode(ctx, 'pulso', { numberOfInputs: 0, numberOfOutputs: 3, outputChannelCount: [2, 1, 1] });
     this.node.port.onmessage = (e) => this.onStatus(e.data);
 
     this.delay = ctx.createDelay(2);
@@ -30,14 +30,14 @@ export class Engine {
     this.delayTone.type = 'lowpass';
     this.delayTone.frequency.value = 4000;
     this.delaySend = ctx.createGain();
-    this.node.connect(this.delaySend, 1);
+    this.node.connect(this.delaySend, 2); // FX2 → delay
     this.delaySend.connect(this.delay);
     this.delay.connect(this.delayTone).connect(this.delayFb).connect(this.delay);
 
     this.reverb = ctx.createConvolver();
     this.reverb.buffer = this.makeImpulse(ctx, 2.8);
     this.reverbSend = ctx.createGain();
-    this.node.connect(this.reverbSend, 1);
+    this.node.connect(this.reverbSend, 1); // FX1 → reverb
     this.reverbSend.connect(this.reverb);
 
     this.master = ctx.createGain();

@@ -72,8 +72,9 @@ class Mod {
     this.smooth = d.smooth;
     this.data = d.data || {};
     this.last = '';
-    this.mix = d.mix || { level: 0.8, pan: 0.5, send: 0.25 };
-    this.gL = this.gR = this.gS = 0;
+    this.mix = d.mix || { level: 0.8, pan: 0.5, fx1: 0.25, fx2: 0.25 };
+    this.gL = this.gR = this.gF1 = this.gF2 = 0;
+    this.on = 1;
     this.pk = 0;
     this.init();
   }
@@ -90,14 +91,17 @@ class Mod {
     return v;
   }
   pat(i) { return this.sa[i].length > 0; }
-  pre() {
+  pre(anySolo) {
     const { s, p } = this;
     for (const k of this.smooth) s[k] += (p[k] - s[k]) * 0.3;
-    // mixer: pan de potência constante e envio para os efeitos
-    const { level, pan, send } = this.mix, a = pan * Math.PI * 0.5;
+    // mixer: mute/solo, pan de potência constante e dois envios (FX1 → reverb, FX2 → delay)
+    const { pan, fx1 = 0, fx2 = 0, mute, solo } = this.mix, a = pan * Math.PI * 0.5;
+    this.on = mute || (anySolo && !solo) ? 0 : 1;
+    const level = this.mix.level * this.on;
     this.gL += (level * Math.cos(a) * 1.414 - this.gL) * 0.3;
     this.gR += (level * Math.sin(a) * 1.414 - this.gR) * 0.3;
-    this.gS += (level * send - this.gS) * 0.3;
+    this.gF1 += (level * fx1 - this.gF1) * 0.3;
+    this.gF2 += (level * fx2 - this.gF2) * 0.3;
     this.block();
   }
 }
@@ -107,6 +111,7 @@ class ModM extends Mod {
   init() {
     this.step = -1; this.phase = 1; this.wasRun = false;
     this.seqGate = false; this.keyGate = false; this.note = 0;
+    this.extInc = 8 / sampleRate; this.clkN = 0; this.prevClk = 0; this.edge = false;
     this.kb = -2; this.eg = 0; this.stage = 0; this.prevGate = false;
     this.lfo = 0; this.ph = 0; this.prevReset = 0;
     this.filter = new Ladder();
@@ -118,7 +123,9 @@ class ModM extends Mod {
   status() { return [this.step]; }
   block() {
     const { s, p, I } = this, sr = sampleRate;
-    this.stepInc = ((30 * Math.pow(10, s.tempo)) / 60) * 4 * Math.pow(2, clamp(this.inp(I.tempo, 0), -5, 5)) / sr;
+    // TEMPO ligado: a entrada funciona como relógio externo (cada flanco ascendente é um passo)
+    this.ext = this.pat(I.tempo);
+    this.stepInc = this.ext ? this.extInc : ((30 * Math.pow(10, s.tempo)) / 60) * 4 / sr;
     this.gateLen = 0.1 + 0.88 * s.gateLen;
     this.glideC = s.glide < 0.01 ? 1 : 1 - Math.exp(-3 / (sr * 0.005 * Math.pow(400, s.glide)));
     this.atkInc = 1 / (sr * 0.001 * Math.pow(10000, s.attack));
@@ -135,8 +142,18 @@ class ModM extends Mod {
     const reset = this.inp(I.reset, 0);
     if (reset > 1 && this.prevReset <= 1) { this.step = -1; this.phase = 1; }
     this.prevReset = reset;
-    if (this.running) {
-      if (!(this.inp(I.hold, 0) > 1)) this.phase += this.stepInc;
+    if (this.ext) {
+      const c = this.inp(I.tempo, 0);
+      this.clkN++;
+      if (c > 1 && this.prevClk <= 1) {
+        if (this.clkN > 32) this.extInc = 1 / this.clkN; // mede o período para o gate length
+        this.clkN = 0;
+        if (!(this.inp(I.hold, 0) > 1)) this.phase = 1;
+      } else if (this.phase < 0.999) this.phase = Math.min(0.999, this.phase + this.extInc);
+      this.prevClk = c;
+    }
+    if (this.running || this.ext) {
+      if (!this.ext && !(this.inp(I.hold, 0) > 1)) this.phase += this.stepInc;
       if (this.phase >= 1) {
         this.phase -= 1;
         if (this.phase >= 1) this.phase = 0;
@@ -147,7 +164,7 @@ class ModM extends Mod {
       }
       if (this.phase > this.gateLen) this.seqGate = false;
     }
-    const clock = this.running && this.phase < 0.5 ? 5 : 0;
+    const clock = (this.running || this.ext) && this.step >= 0 && this.phase < 0.5 ? 5 : 0;
     const gate = this.seqGate || this.keyGate || this.inp(I.gate, 0) > 1;
     this.kb += (this.note / 12 - 2 - this.kb) * this.glideC;
 
@@ -627,23 +644,27 @@ class PulsoProcessor extends AudioWorkletProcessor {
     }
   }
   process(_, outputs) {
-    const outL = outputs[0][0], outR = outputs[0][1] || outputs[0][0], outS = outputs[1] && outputs[1][0];
+    const outL = outputs[0][0], outR = outputs[0][1] || outputs[0][0];
+    const outF1 = outputs[1] && outputs[1][0], outF2 = outputs[2] && outputs[2][0];
     if (!outL) return true;
     const mods = this.mods, n = mods.length;
-    for (let m = 0; m < n; m++) mods[m].pre();
+    let anySolo = false;
+    for (let m = 0; m < n; m++) if (mods[m].mix.solo) anySolo = true;
+    for (let m = 0; m < n; m++) mods[m].pre(anySolo);
     for (let i = 0; i < outL.length; i++) {
-      let l = 0, r = 0, sd = 0;
+      let l = 0, r = 0, f1 = 0, f2 = 0;
       for (let m = 0; m < n; m++) {
         const mod = mods[m];
         let v = mod.tick();
         if (!(v > -1e3 && v < 1e3)) { mod.init(); v = 0; }
         const a = v < 0 ? -v : v;
         if (a > mod.pk) mod.pk = a;
-        l += v * mod.gL; r += v * mod.gR; sd += v * mod.gS;
+        l += v * mod.gL; r += v * mod.gR; f1 += v * mod.gF1; f2 += v * mod.gF2;
       }
       outL[i] = l === l ? l * 0.85 : 0;
       outR[i] = r === r ? r * 0.85 : 0;
-      if (outS) outS[i] = sd === sd ? sd * 1.2 : 0;
+      if (outF1) outF1[i] = f1 === f1 ? f1 * 1.2 : 0;
+      if (outF2) outF2[i] = f2 === f2 ? f2 * 1.2 : 0;
     }
     for (let m = 0; m < n; m++) {
       const st = mods[m].status(), key = st.join(',');
@@ -651,7 +672,7 @@ class PulsoProcessor extends AudioWorkletProcessor {
     }
     // nível de sinal de cada módulo, para os LEDs do mixer
     if (++this.frame % 8 === 0) {
-      this.port.postMessage({ lv: mods.map((m) => [m.id, m.pk * m.mix.level]) });
+      this.port.postMessage({ lv: mods.map((m) => [m.id, m.pk * m.mix.level * m.on]) });
       for (let m = 0; m < n; m++) mods[m].pk = 0;
     }
     return true;

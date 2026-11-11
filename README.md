@@ -16,14 +16,15 @@ Site: https://chicomaria.github.io/SYNTH/
 
 ## Rack
 
-- **Adicionar, remover, minimizar:** podes ter várias instâncias do mesmo módulo. Minimizado, o módulo mostra só o patch bay.
-- **Cabos:** toca numa saída e depois numa entrada de qualquer módulo. Vários cabos na mesma entrada somam-se. Toca numa entrada ligada para tirar o último cabo.
+- **Adicionar, remover, minimizar:** podes ter várias instâncias do mesmo módulo. Minimizado (▾/▸), o módulo fica só com o cabeçalho e os cabos passam a terminar na base do cabeçalho, na posição relativa de cada tomada. O mixer e o osciloscópio também se minimizam (botões ▾ Mixer e ▾ Scope).
+- **Relógio master:** ao adicionar um módulo, é ligado automaticamente um cabo do relógio do 1.º módulo do rack para a entrada de relógio do novo (M: ASSIGN → TEMPO, D: TRIGGER → ADV/CLOCK, S e L: CLOCK → CLOCK). O Pulso X não tem relógio. No Pulso M, a entrada TEMPO funciona como entrada de relógio externo, como no hardware.
+- **Cabos:** toca numa saída e depois numa entrada de qualquer módulo. Vários cabos na mesma entrada somam-se. Toca numa entrada ligada para tirar o último cabo. Os cabos são desenhados com 70% de opacidade.
 - **Aleatório:** patch, sequência e knobs, para todo o rack (barra de topo) ou por módulo.
 - **Zoom:** botões − e + na barra de topo.
-- **Mixer:** fixo no topo, um canal vertical por módulo (FX SEND, PAN, LEVEL) com LED de sinal, ao lado do bloco FX/MASTER e do osciloscópio.
+- **Mixer:** fixo no topo, um canal vertical por módulo com LED de sinal, botões M (mute), S (solo) e ↧ (vai até ao módulo no rack), envios FX1 (reverb) e FX2 (delay), PAN e LEVEL. Ao lado ficam o bloco FX/MASTER e o osciloscópio.
 - **Clássicos:** patches que usam técnicas conhecidas destas máquinas (PWM, acid, bombo com envelope de afinação, FM com hard sync, sincronia M+D, polirritmos). Foram montados à mão, não copiados dos livros de patches do fabricante.
 - **Modo Ícones** (Visual → Modo): sem knobs nem patch bay. Cada módulo é um núcleo com ícones à volta (oscilador, filtro, envelopes, tempo, mix, envio FX, tocar). Arrastar um ícone muda dois parâmetros ao mesmo tempo (horizontal e vertical); duplo toque repõe o valor. O ícone de sequência gera e deforma a sequência (densidade e alcance). Arrastar o núcleo de um módulo para junto de outro cria cabos automaticamente (mais perto, mais cabos). Os botões aleatórios funcionam também neste modo, e o patch aleatório espalha os módulos.
-- **Visual:** menu com skins (Pulso, Clássico, Funky, Anos 70, Aleatório), estilo dos knobs (arco, clássico, aleatório) e layout (Original, com os controlos em linhas pela ordem do painel do hardware, ou Compacto).
+- **Visual:** menu com skins (Pulso, Clássico, Funky, Anos 70, Aleatório), estilo dos knobs (arco, clássico, aleatório) e layout (Clássico ou Compacto). No Clássico, todos os módulos têm a mesma largura e cada knob, interruptor e botão fica na sua posição do painel, com três tamanhos: knob grande, médio e pequeno (os interruptores e botões têm o footprint do knob pequeno). As posições vêm do conhecimento dos painéis, não foram medidas em fotografias.
 - **Banco de patches:** guarda o rack atual com um nome (módulos, knobs, sequências, cabos, mixer e efeitos), carrega, substitui ou apaga. O banco fica no browser e pode ser exportado e importado como ficheiro `.json`.
 - Osciloscópio global. O estado fica guardado no browser. Instalável como app (PWA).
 

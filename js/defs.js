@@ -60,7 +60,7 @@ export const TYPES = {
       K('res', 'RESONANCE', 0.2, { r: [0, 0.7] }), S('vcfMode', 'VCF MODE', ['LP', 'HP']),
       K('vcfDecay', 'VCF DECAY', 0.4, DEC), K('vcfEg', 'VCF EG AMT', 0.7, { bipolar: true }), K('noiseMod', 'NOISE / VCF MOD', 0, { r: [0, 0.4] }),
       S('vcaEg', 'VCA EG', ['FAST', 'SLOW']), K('vcaDecay', 'VCA DECAY', 0.45, DEC), K('vol', 'VOLUME', 0.7, VOL),
-      K('tempo', 'TEMPO', 0.56, { keep: true, format: (v) => `${Math.round(10 * Math.pow(1000, v))}` }),
+      K('tempo', 'TEMPO', 0.56, { size: 'lg', keep: true, format: (v) => `${Math.round(10 * Math.pow(1000, v))}` }),
       H('SEQUENCER · PITCH'),
       ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => K(`pitch${n}`, `${n}`, 0.5, { bipolar: true, seq: true, size: 'sm', r: [0.42, 0.58] })),
       H('SEQUENCER · VELOCITY'),
@@ -92,13 +92,13 @@ export const TYPES = {
       K('vcfAttack', 'VCF ATTACK', 0.1, { r: [0, 0.4] }), K('vcfDecay', 'VCF DECAY', 0.45, DEC),
       K('vcaAttack', 'VCA ATTACK', 0.1, { r: [0, 0.4] }), K('vcaDecay', 'VCA DECAY', 0.5, DEC), K('vol', 'VOLUME', 0.6, VOL),
       H('SEQUENCER 1'),
-      ...[1, 2, 3, 4].map((n) => K(`a${n}`, `STEP ${n}`, [0.5, 0.62, 0.56, 0.7][n - 1], { bipolar: true, seq: true, r: [0.3, 0.7] })),
+      ...[1, 2, 3, 4].map((n) => K(`a${n}`, `STEP ${n}`, [0.5, 0.62, 0.56, 0.7][n - 1], { bipolar: true, seq: true, size: 'sm', r: [0.3, 0.7] })),
       T('s1Osc', 'OSC 1', 1, { seq: true }), T('s1Sub1', 'SUB 1', 0, { seq: true }), T('s1Sub2', 'SUB 2', 0, { seq: true }),
       H('SEQUENCER 2'),
-      ...[1, 2, 3, 4].map((n) => K(`b${n}`, `STEP ${n}`, [0.5, 0.44, 0.6, 0.5][n - 1], { bipolar: true, seq: true, r: [0.3, 0.7] })),
+      ...[1, 2, 3, 4].map((n) => K(`b${n}`, `STEP ${n}`, [0.5, 0.44, 0.6, 0.5][n - 1], { bipolar: true, seq: true, size: 'sm', r: [0.3, 0.7] })),
       T('s2Osc', 'OSC 2', 1, { seq: true }), T('s2Sub1', 'SUB 1', 0, { seq: true }), T('s2Sub2', 'SUB 2', 0, { seq: true }),
       H('POLYRHYTHM'),
-      K('tempo', 'TEMPO', 0.4, { keep: true, format: (v) => `${Math.round(20 * Math.pow(150, v))}` }),
+      K('tempo', 'TEMPO', 0.4, { size: 'lg', keep: true, format: (v) => `${Math.round(20 * Math.pow(150, v))}` }),
       ...[1, 2, 3, 4].flatMap((n) => [
         K(`rhythm${n}`, `RHYTHM ${n}`, [3, 2, 5, 7][n - 1] / 15, { format: int16, seq: true, size: 'sm' }),
         T(`r${n}s1`, 'SEQ 1', n === 1 ? 1 : 0, { seq: true }), T(`r${n}s2`, 'SEQ 2', n === 2 ? 1 : 0, { seq: true }),
@@ -174,35 +174,47 @@ export const FX_CONTROLS = [
   K('delayFb', 'FEEDBACK', 0.4), K('delayMix', 'DELAY', 0.5), K('reverb', 'REVERB', 0.45), K('vol', 'MASTER', 0.8, { size: 'lg' }),
 ];
 
-// Layout "original": controlos por linhas, pela ordem do painel do hardware, e colunas do patch bay
-const n8 = (p) => [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `${p}${n}`);
+// Layout clássico: posição de cada controlo no painel, como nos aparelhos físicos.
+// Todos os módulos têm a mesma largura. `grid` é o número de colunas da área de controlos e `rows` o de linhas;
+// cada controlo fica em [coluna, linha] (centro, aceita frações) e pode trocar de tamanho com um 3.º valor.
+// Três tamanhos: knob grande (lg), médio (md) e pequeno (sm). Os interruptores e botões ocupam o mesmo que um knob pequeno.
+// `cols` é o número de colunas do patch bay. As posições vêm do conhecimento dos painéis, não foram medidas em fotografias.
+const at = (row, list) => Object.fromEntries(list.map(([id, x, size, dy = 0]) => [id, [x, row + dy, size]]));
 const LAYOUT = {
-  M: { cols: 4, rows: [
-    ['freq', 'pw', 'wave', 'mix', 'cutoff', 'res', 'vcfMode', 'vcaMode', 'vol'],
-    ['glide', 'vcoModSrc', 'vcoModAmt', 'vcoModDest', 'vcfModSrc', 'vcfModAmt', 'vcfModPol'],
-    ['tempo', 'gateLen', 'lfoRate', 'lfoWave', 'attack', 'sustain', 'decay', 'vcMix'],
-  ] },
-  D: { cols: 3, rows: [
-    ['vcoDecay', 'seqPitch', 'vco1Eg', 'vco1Freq', 'vco1Wave', 'vco1Lvl', 'noiseLvl', 'cutoff', 'res', 'vcfMode', 'vcaEg', 'vol'],
-    ['fm', 'sync', 'vco2Eg', 'vco2Freq', 'vco2Wave', 'vco2Lvl', 'vcfDecay', 'vcfEg', 'noiseMod', 'vcaDecay'],
-    ['tempo', ...n8('pitch')],
-    ['@custom', ...n8('vel')],
-  ] },
-  S: { cols: 4, rows: [
-    ['a1', 'a2', 'a3', 'a4', 's1Osc', 's1Sub1', 's1Sub2', 'vco1Freq', 'sub1Div', 'sub2Div', 'vco1Wave', 'cutoff', 'res', 'vcfEg'],
-    ['b1', 'b2', 'b3', 'b4', 's2Osc', 's2Sub1', 's2Sub2', 'vco2Freq', 'sub3Div', 'sub4Div', 'vco2Wave', 'vcfAttack', 'vcfDecay', 'vcaAttack', 'vcaDecay'],
-    ['tempo', 'rhythm1', 'r1s1', 'r1s2', 'rhythm2', 'r2s1', 'r2s2', 'rhythm3', 'r3s1', 'r3s2', 'rhythm4', 'r4s1', 'r4s2', 'seqOct', 'quant'],
-    ['vco1Lvl', 'sub1Lvl', 'sub2Lvl', 'vco2Lvl', 'sub3Lvl', 'sub4Lvl', 'vol'],
-  ] },
-  L: { cols: 5, rows: [
-    ['vcoFreq', 'vcoEg', 'modFreq', 'fm', 'vcoLvl', 'modLvl', 'noiseLvl', 'vol'],
-    ['fold', 'foldEg', 'cutoff', 'res', 'vcfEg', 'filtMode', 'blend', 'eg1Decay', 'eg2Decay'],
-    ['tempo', 'seq1Range', 'seq1Corrupt', 'seq1Len', 'seq2Range', 'seq2Corrupt', 'seq2Len', 'quant'],
-  ] },
-  X: { cols: 5, rows: [
-    ['vcoFreq', 'vcoWave', 'pw', 'noiseMix', 'progLvl', 'mode', 'vcaMode', 'shift', 'lfoRate', 'lfoAmt', 'res', 'vol'],
-    ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'b10'],
-  ] },
+  M: { cols: 4, grid: 10.6, rows: 3, at: {
+    ...at(0, [['freq', 0.6], ['pw', 1.9], ['wave', 2.9], ['mix', 3.9], ['cutoff', 5.3], ['res', 6.7], ['vcfMode', 7.7], ['vcaMode', 8.7], ['vol', 9.9]]),
+    ...at(1, [['glide', 0.6], ['vcoModSrc', 1.9], ['vcoModAmt', 2.9], ['vcoModDest', 3.9], ['vcfModSrc', 4.9], ['vcfModAmt', 5.9], ['vcfModPol', 6.9], ['vcMix', 9.9]]),
+    ...at(2, [['tempo', 0.6], ['gateLen', 1.9, 'sm'], ['lfoRate', 2.9], ['lfoWave', 3.9], ['attack', 4.9], ['sustain', 5.9], ['decay', 6.9]]),
+  } },
+  D: { cols: 3, grid: 12.5, rows: 4, at: {
+    ...at(0, [['vcoDecay', 0.6], ['seqPitch', 1.6], ['vco1Eg', 2.6], ['vco1Freq', 3.9], ['vco1Wave', 5.1], ['vco1Lvl', 6.1], ['noiseLvl', 7.1], ['cutoff', 8.4], ['res', 9.7], ['vcfMode', 10.7], ['vol', 11.8]]),
+    ...at(1, [['fm', 0.6], ['sync', 1.6], ['vco2Eg', 2.6], ['vco2Freq', 3.9], ['vco2Wave', 5.1], ['vco2Lvl', 6.1], ['vcfDecay', 7.1], ['vcfEg', 8.4], ['noiseMod', 9.7], ['vcaEg', 10.7], ['vcaDecay', 11.8]]),
+    ...at(2, [['tempo', 0.8, 'lg', 0.5], ['@custom', 2.2, 'sm', 0.5], ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`pitch${n}`, 3.6 + (n - 1) * 1.1])]),
+    ...at(3, [1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`vel${n}`, 3.6 + (n - 1) * 1.1])),
+  } },
+  S: { cols: 4, grid: 13.6, rows: 4, at: {
+    ...at(0, [['a1', 0.5], ['a2', 1.4], ['a3', 2.3], ['a4', 3.2], ['s1Osc', 4.1], ['s1Sub1', 4.8], ['s1Sub2', 5.5],
+      ['vco1Freq', 6.8], ['sub1Div', 8.1], ['sub2Div', 9.1], ['vco1Wave', 10.1], ['cutoff', 11.6], ['res', 13]]),
+    ...at(1, [['b1', 0.5], ['b2', 1.4], ['b3', 2.3], ['b4', 3.2], ['s2Osc', 4.1], ['s2Sub1', 4.8], ['s2Sub2', 5.5],
+      ['vco2Freq', 6.8], ['sub3Div', 8.1], ['sub4Div', 9.1], ['vco2Wave', 10.1], ['vcfEg', 11.6], ['vol', 13]]),
+    ...at(2, [['tempo', 0.6, 'lg', 0.5],
+      ...[1, 2, 3, 4].flatMap((n) => {
+        const x = 2 + (n - 1) * 1.7;
+        return [[`rhythm${n}`, x], [`r${n}s1`, x + 0.75, 'sm', -0.18], [`r${n}s2`, x + 0.75, 'sm', 0.22]];
+      }),
+      ['seqOct', 9.1], ['quant', 10.1], ['vcfAttack', 11.6], ['vcfDecay', 12.8]]),
+    ...at(3, [['vco1Lvl', 2], ['sub1Lvl', 3], ['sub2Lvl', 4], ['vco2Lvl', 5.4], ['sub3Lvl', 6.4], ['sub4Lvl', 7.4], ['vcaAttack', 11.6], ['vcaDecay', 12.8]]),
+  } },
+  L: { cols: 5, grid: 12, rows: 3, at: {
+    ...at(0, [['vcoFreq', 0.7], ['vcoEg', 2], ['modFreq', 3.2], ['fm', 4.4], ['vcoLvl', 5.8], ['modLvl', 6.9], ['noiseLvl', 8], ['vol', 11.2]]),
+    ...at(1, [['fold', 0.7], ['foldEg', 2], ['cutoff', 3.4], ['res', 4.8], ['vcfEg', 5.9], ['filtMode', 7], ['blend', 8.1], ['eg1Decay', 9.6], ['eg2Decay', 10.8]]),
+    ...at(2, [['tempo', 0.7], ['seq1Range', 2], ['seq1Corrupt', 3.1], ['seq1Len', 4.2], ['seq2Range', 5.6], ['seq2Corrupt', 6.7], ['seq2Len', 7.8], ['quant', 9.2]]),
+  } },
+  X: { cols: 5, grid: 12, rows: 3, at: {
+    ...at(0, [['vcoFreq', 0.7], ['vcoWave', 1.9], ['pw', 2.9], ['noiseMix', 3.9], ['progLvl', 5], ['mode', 6.1], ['vcaMode', 7.1], ['shift', 8.6], ['lfoRate', 10], ['lfoAmt', 11.1]]),
+    ...at(1, [['res', 10], ['vol', 11.1]]),
+    ...at(1.6, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => [`b${n}`, 0.7 + (n - 1) * 0.95])),
+  } },
 };
 
 for (const [key, t] of Object.entries(TYPES)) {
@@ -225,8 +237,18 @@ function mSeq(notes) {
 
 export function newModule(type, id) {
   const t = TYPES[type];
-  return { id, type, p: { ...t.defaults, run: 0 }, data: t.data ? t.data() : {}, min: false, mix: { level: 0.8, pan: 0.5, send: 0.25 } };
+  return { id, type, p: { ...t.defaults, run: 0 }, data: t.data ? t.data() : {}, min: false, mix: normMix() };
 }
+
+// Canal do mixer: FX1 vai para o reverb, FX2 para o delay. Racks antigos tinham um só envio (`send`).
+export function normMix(mix = {}) {
+  const { send = 0.25, ...rest } = mix;
+  return { level: 0.8, pan: 0.5, fx1: send, fx2: send, mute: 0, solo: 0, ...rest };
+}
+
+// Relógio: saída que cada tipo usa como relógio master e entrada que aceita um relógio externo
+export const CLOCK_OUT = { M: 'assign', D: 'trigOut', S: 'clockOut', L: 'clockOut' };
+export const CLOCK_IN = { M: 'tempo', D: 'adv', S: 'clock', L: 'clock' };
 const mod = (type, id, p = {}) => { const m = newModule(type, id); Object.assign(m.p, p); return m; };
 const FX = Object.fromEntries(FX_CONTROLS.map((c) => [c.id, c.def]));
 
