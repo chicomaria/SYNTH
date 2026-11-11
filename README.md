@@ -13,6 +13,8 @@ Site: https://chicomaria.github.io/SYNTH/
 | Pulso S | Subharmonicon | 2 VCOs com 2 sub-harmónicos cada, 2 sequenciadores de 4 passos, 4 geradores de ritmo, quantização |
 | Pulso L | Labyrinth | VCO sinusoidal com FM, wavefolder, filtro LP/BP, 2 sequenciadores generativos de 8 bits com "corrupt" |
 | Pulso X | Spectravox | Banco de 10 filtros com spectral shift e LFO, modo vocoder com entrada de programa |
+| Pulso N | Sirin | 2 VCOs com forma de onda contínua e hard sync, filtro ladder, dois ADSR, LFO com S&H, sequenciador de até 32 passos |
+| Pulso A | ARP 2600 | 3 VCOs, ring mod, ruído com cor, sample & hold, lag, filtro ladder, ADSR e AR, VCA, reverb de mola, ligações normalizadas e 40 pontos de patch |
 
 ## Rack
 
@@ -31,10 +33,12 @@ Site: https://chicomaria.github.io/SYNTH/
 ## Diferenças conhecidas em relação ao hardware
 
 - O som é um modelo digital, não uma emulação ao nível do circuito.
-- Pulso L e Pulso X foram feitos a partir da arquitetura geral desses instrumentos. Os controlos e os pontos de patch não foram conferidos um a um com os manuais.
+- Pulso L, Pulso X, Pulso N e Pulso A foram feitos a partir da arquitetura geral desses instrumentos. Os controlos e os pontos de patch não foram conferidos um a um com os manuais.
 - Pulso X não tem entrada de microfone: o programa do vocoder vem de um cabo (por exemplo, a saída VCA de outro módulo).
 - Pulso M: o sequenciador guarda nota e pausa por passo (sem acento, ratchet, swing, nem os 64 padrões). A saída ASSIGN envia sempre o relógio de passos.
 - Pulso S: quantização só em 12-ET; sem modos de afinação justa.
+- Pulso N: o Sirin real é uma caixa de secretária com poucos controlos e menus; aqui os parâmetros estão todos no painel, e o sequenciador é o mesmo do Pulso M (sem arpejador).
+- Pulso A: os sliders do 2600 aparecem como knobs, o teclado é o do sequenciador, e as ligações normalizadas foram simplificadas.
 - Não há MIDI.
 
 ## Correr localmente

@@ -404,7 +404,7 @@ function refreshModule(m) {
 function randomizeKnobs(m) { Object.assign(m.p, randomParams(m.type, false)); refreshModule(m); }
 function randomizeSeq(m) {
   Object.assign(m.p, randomParams(m.type, true));
-  if (m.type === 'M') {
+  if (TYPES[m.type].custom === 'mseq') {
     m.data.steps = randomMSeq(m.data.len);
     engine.send({ t: 'data', id: m.id, k: 'steps', v: m.data.steps });
   }
