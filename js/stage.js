@@ -38,7 +38,7 @@ const glyph = (n) => `<svg viewBox="0 0 24 24" aria-hidden="true">${GLYPHS[n]}</
 const A = (key, label, g, hue, x, y, extra = {}) => ({ key, label, glyph: g, hue, x, y, ...extra });
 const MIXICONS = [
   A('mix', 'Mix', 'mix', 180, 'mix.pan', 'mix.level'),
-  A('send', 'Envio FX', 'send', 250, 'mix.send', null),
+  A('send', 'Envios FX1 · FX2', 'send', 250, 'mix.fx1', 'mix.fx2'),
 ];
 const SPEC = {
   M: [
@@ -168,7 +168,7 @@ export function createStage(ctx) {
         else ctx.setParam(m, k, v);
       },
       meta: (k) => (k.startsWith('mix.')
-        ? { label: { pan: 'PAN', level: 'LEVEL', send: 'FX SEND' }[k.slice(4)], def: { pan: 0.5, level: 0.8, send: 0.25 }[k.slice(4)] }
+        ? { label: { pan: 'PAN', level: 'LEVEL', fx1: 'FX1 REVERB', fx2: 'FX2 DELAY' }[k.slice(4)], def: { pan: 0.5, level: 0.8, fx1: 0.25, fx2: 0.25 }[k.slice(4)] }
         : TYPES[m.type].params.find((c) => c.id === k)),
     };
   }

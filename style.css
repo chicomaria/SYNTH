@@ -17,6 +17,8 @@
   --jack-w: 42px;
   --radius: 8px;
   --scope-grid: #2a2d33;
+  --mod-w: 1040px;
+  --row-h: 92px;
   color-scheme: dark;
 }
 
@@ -67,8 +69,8 @@ button:focus-visible, .knob-dial:focus-visible { outline: 2px solid var(--accent
 
 /* Rack */
 #rack-wrap { position: relative; padding: 8px; }
-#cables { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 5; overflow: visible; }
-#cables path { fill: none; stroke-linecap: round; opacity: 0.75; }
+#cables { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 5; overflow: visible; opacity: 0.7; }
+#cables path { fill: none; stroke-linecap: round; }
 #rack { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
 
 .mod {
@@ -88,8 +90,13 @@ button:focus-visible, .knob-dial:focus-visible { outline: 2px solid var(--accent
 }
 .custom { flex: 0 0 100%; }
 .btn-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 4px 0; }
-.mod.min .controls { display: none; }
-.mod.min .patch { width: auto; flex: 1; }
+/* Minimizado: só o cabeçalho; os cabos terminam na base do cabeçalho */
+.mod.min .mod-body, .mod.min .custom { display: none; }
+.mod.min .mod-head { margin-bottom: 0; border-bottom: 2px dashed var(--line); padding-bottom: 4px; }
+.min-btn { min-width: 26px; }
+.mod { scroll-margin-top: calc(var(--top-h, 0px) + 8px); }
+.mod.flash { animation: mod-flash 1.2s ease-out; }
+@keyframes mod-flash { 0%, 30% { box-shadow: 0 0 0 3px var(--accent), 0 0 24px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
 
 /* Knobs */
 .knob { display: flex; flex-direction: column; align-items: center; width: 50px; }
@@ -172,7 +179,15 @@ button:focus-visible, .knob-dial:focus-visible { outline: 2px solid var(--accent
 .channel .knob { width: 44px; }
 .channel .knob-dial { width: 26px; height: 26px; }
 .fx-grid { display: grid; grid-template-columns: repeat(2, 46px); align-items: start; }
-@media (max-width: 700px), (max-height: 620px) { .top { position: static; } }
+@media (max-width: 700px), (max-height: 620px) { .top { position: static; } .mod { scroll-margin-top: 8px; } }
+.ch-btns { display: flex; gap: 2px; margin: 2px 0 1px; }
+.ch-btn { padding: 1px 0; width: 17px; font-size: 9px; font-weight: 700; border-radius: 3px; line-height: 1.3; }
+.ch-mute.on { background: var(--led); border-color: var(--led); color: #fff; }
+.ch-solo.on { background: #ffd866; border-color: #ffd866; color: #1a1208; }
+.channel.muted .knob, .channel.muted .ch-name { opacity: 0.4; }
+.channel .knob-sm { width: 44px; }
+.channel .knob-sm .knob-dial { width: 20px; height: 20px; }
+[data-mix-min="1"] #mixer, [data-mix-min="1"] #mixer-fx, [data-scope-min="1"] .scope-box { display: none; }
 
 /* Menu visual */
 .menu-anchor { position: relative; }
@@ -183,21 +198,32 @@ button:focus-visible, .knob-dial:focus-visible { outline: 2px solid var(--accent
 }
 #view-menu[hidden] { display: none; }
 
-/* Layout original: linhas de controlos pela ordem do painel, knobs maiores, patch bay em grelha fixa */
-[data-layout="original"] .mod { flex: 0 1 auto; max-width: 100%; }
-[data-layout="original"] .controls.rows { flex-direction: column; flex-wrap: nowrap; gap: 6px; }
-[data-layout="original"] .row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 4px; }
-[data-layout="original"] .row .custom { flex: 0 0 auto; align-self: center; margin: 0 6px 0 0; }
-[data-layout="original"] .mod .knob, [data-layout="original"] .mod .switch { width: 60px; }
-[data-layout="original"] .mod .knob-dial { width: 40px; height: 40px; }
-[data-layout="original"] .mod .knob-lg .knob-dial { width: 50px; height: 50px; }
-[data-layout="original"] .mod .knob-sm { width: 48px; }
-[data-layout="original"] .mod .knob-sm .knob-dial { width: 34px; height: 34px; }
-[data-layout="original"] .mod .knob-label { font-size: 8px; }
-[data-layout="original"] .switch-opts { width: 52px; }
-[data-layout="original"] .toggle { padding: 5px 6px; }
-[data-layout="original"] .mod.min .patch { grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)) !important; width: 100% !important; }
-@media (max-width: 560px) { [data-layout="original"] .patch { width: 100% !important; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)) !important; } }
+/* Layout clássico: todos os módulos com a mesma largura e cada controlo na sua posição do painel.
+   Três tamanhos: knob grande, médio e pequeno; interruptores e botões têm o footprint do knob pequeno. */
+[data-layout="original"] #rack-wrap { min-width: min-content; }
+[data-layout="original"] .mod { flex: 0 0 var(--mod-w); width: var(--mod-w); max-width: none; }
+[data-layout="original"] .mod-body { flex-direction: row; gap: 10px; }
+[data-layout="original"] .patch { width: auto; flex: 0 0 auto; }
+.controls.panel { display: block; position: relative; flex: 1 1 auto; height: calc(var(--rows) * var(--row-h)); }
+.at-lg { --dial: 54px; }
+.at-md { --dial: 40px; }
+.at-sm { --dial: 26px; }
+.panel .at { position: absolute; top: calc((var(--y) + 0.4) * var(--row-h) - var(--dial) / 2); transform: translateX(-50%); width: 66px; }
+.panel .knob .knob-dial { width: var(--dial); height: var(--dial); }
+.panel .knob-label { font-size: 7.5px; margin-top: 2px; }
+.panel .toggle.at { width: 34px; height: var(--dial); padding: 0; font-size: 7px; line-height: 1; }
+.panel .custom.at { --dial: 56px; width: 66px; display: flex; flex-direction: column; gap: 4px; margin: 0; }
+.panel .custom.at button { width: 100%; padding: 5px 0; font-size: 8px; }
+.switch.lever { width: 66px; }
+.lever-body { position: relative; width: 16px; height: var(--dial, 26px); }
+.lever-btn { position: absolute; inset: 0; padding: 0; border-radius: 8px; background: var(--cap); border-color: var(--cap-line); }
+.lever-tip { position: absolute; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--pointer);
+  top: calc(1px + var(--pos, 0) * (100% - 12px)); transition: top 0.08s; }
+.lever-opts { position: absolute; left: 20px; top: -1px; bottom: -1px; display: flex; flex-direction: column; justify-content: space-between;
+  font-size: 6.5px; line-height: 1; color: var(--muted); white-space: nowrap; }
+.lever-opts span { cursor: pointer; }
+.lever-opts span.on { color: var(--accent); font-weight: 700; }
+.lever .knob-label { margin-top: 3px; }
 
 /* ---------- Skins ---------- */
 /* Clássico: painel preto, legendas brancas, knobs pretos com ponteiro branco, laterais de madeira */
@@ -262,12 +288,6 @@ button:focus-visible, .knob-dial:focus-visible { outline: 2px solid var(--accent
 .custom.wide { margin-top: 6px; }
 .custom.wide .m-steps { grid-template-columns: repeat(16, minmax(0, 1fr)); }
 .custom.wide .key { padding: 10px 0; }
-.mod.min .custom { display: none; }
-
-/* Pulso D no layout original: TRIGGER/ADVANCE ocupam a largura de um knob, para o velocity alinhar com o pitch */
-[data-layout="original"] .type-D .row .custom { width: 60px; flex-direction: column; gap: 3px; margin: 0; align-self: center; }
-[data-layout="original"] .type-D .row .custom button { width: 100%; padding: 4px 0; font-size: 8px; }
-[data-layout="original"] .type-D .row .knob-sm { width: 48px; }
 
 /* ---------- Modo Ícones: sem knobs nem patch bay ---------- */
 [data-mode="stage"] #rack-wrap, [data-mode="stage"] #mixer, [data-mode="stage"] #mixer-fx, [data-mode="stage"] #patch-hint { display: none; }
