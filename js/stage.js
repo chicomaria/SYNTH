@@ -3,7 +3,7 @@
 // Arrastar o núcleo de um módulo para junto de outro cria cabos entre eles (mais perto, mais cabos).
 // O ícone de sequência gera e deforma a sequência do módulo (densidade e alcance).
 
-import { TYPES, FX_CONTROLS } from './defs.js';
+import { TYPES, FX_CONTROLS } from './defs.js?v=11';
 
 const HUE = { M: 30, D: 340, S: 140, L: 200, X: 280, N: 10, A: 100, FX: 55 };
 const F = 22; // alcance do ícone dentro do campo, em px

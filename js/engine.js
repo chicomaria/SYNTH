@@ -1,6 +1,6 @@
 // Liga o AudioWorklet (onde vivem os módulos) aos efeitos, ao osciloscópio e à saída.
 
-import { TYPES } from './defs.js';
+import { TYPES } from './defs.js?v=11';
 
 export class Engine {
   constructor(onStatus) {
@@ -20,7 +20,7 @@ export class Engine {
   async init(state) {
     const AC = window.AudioContext || window.webkitAudioContext;
     const ctx = new AC({ latencyHint: 'interactive' });
-    await ctx.audioWorklet.addModule('js/worklet.js');
+    await ctx.audioWorklet.addModule('js/worklet.js?v=11');
     this.node = new AudioWorkletNode(ctx, 'pulso', { numberOfInputs: 0, numberOfOutputs: 3, outputChannelCount: [2, 1, 1] });
     this.node.port.onmessage = (e) => this.onStatus(e.data);
 
