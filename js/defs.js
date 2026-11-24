@@ -367,7 +367,91 @@ export const PRESETS = [
       fx: { ...FX },
     }),
   },
+  {
+    name: 'Ecossistema generativo',
+    about: 'Os sete módulos ligados entre si: o L dá o relógio e gera padrões que se vão corrompendo, o S muda a tonalidade de todos, o X vocoda a percussão sobre os acordes',
+    make: makeEcosystem,
+  },
 ];
+
+// Patch generativo com todos os módulos. Tonalidade: dó menor.
+// - L é o relógio master (100 BPM) e o gerador: os bits do SEQ 1 disparam a percussão, os do SEQ 2 o S&H do A,
+//   e o "corrupt" vai mudando os padrões sozinho.
+// - S faz a progressão de acordes (SEQ 1 muda de 16 em 16 passos: dó, fá, si♭, mi♭) e transpõe M, N, L e A.
+// - M (11 passos), N (16) e A (7) tocam frases de comprimentos diferentes, que só se alinham de vez em quando.
+// - X vocoda a percussão e os bleeps do L sobre os sub-harmónicos do S; o SEQ 2 do L mexe-lhe no spectral shift.
+// - VC MIX do M serve de atenuador: o VCO 3 do A (modo LOW, ~0,3 Hz) passa por ele e abre lentamente o fold do L.
+const semi = (n) => 0.5 + n / 24; // passo do sequenciador do S (±1 oitava, quantizado) para n semitons
+function makeEcosystem() {
+  const l = mod('L', 'l1', {
+    tempo: Math.log10(100 / 30), vcoFreq: 0.625, vcoEg: 0.56, fm: 0.12, modFreq: 0.62, vcoLvl: 0.85,
+    fold: 0.22, foldEg: 0.35, cutoff: 0.5, res: 0.45, vcfEg: 0.72, filtMode: 0.25, blend: 0.75,
+    eg1Decay: 0.36, eg2Decay: 0.42, seq1Range: 0.55, seq1Corrupt: 0.32, seq1Len: 1,
+    seq2Range: 0.25, seq2Corrupt: 0.45, seq2Len: 5 / 7, quant: 2, vol: 0.45,
+  });
+  const s = mod('S', 's1', {
+    vco1Freq: 1 / 3, vco2Freq: 1 / 3, vco1Wave: 0, vco2Wave: 1, sub1Div: 2 / 15, sub2Div: 3 / 15, sub3Div: 1 / 15, sub4Div: 4 / 15,
+    vco1Lvl: 0.55, sub1Lvl: 0.5, sub2Lvl: 0.35, vco2Lvl: 0.35, sub3Lvl: 0.3, sub4Lvl: 0.25,
+    cutoff: 0.38, res: 0.35, vcfEg: 0.68, vcfAttack: 0.05, vcfDecay: 0.5, vcaAttack: 0.12, vcaDecay: 0.58, vol: 0.4,
+    a1: semi(0), a2: semi(5), a3: semi(-2), a4: semi(3), b1: semi(0), b2: semi(7), b3: semi(3), b4: semi(10),
+    s1Osc: 1, s1Sub1: 0, s1Sub2: 0, s2Osc: 1, s2Sub1: 0, s2Sub2: 1,
+    rhythm1: 15 / 15, rhythm2: 2 / 15, rhythm3: 4 / 15, rhythm4: 6 / 15,
+    r1s1: 1, r1s2: 0, r2s1: 0, r2s2: 1, r3s1: 0, r3s2: 1, r4s1: 0, r4s2: 0, seqOct: 2, quant: 1,
+  });
+  const m = mod('M', 'm1', {
+    wave: 0, cutoff: 0.4, res: 0.55, vcfModAmt: 0.45, decay: 0.34, glide: 0.12, gateLen: 0.4, vcMix: 0.85, vol: 0.45,
+  });
+  m.data = { steps: mSeq([12, null, null, 19, null, 15, null, null, 22, null, 17]), len: 11 };
+  const n = mod('N', 'n1', {
+    osc1Oct: 1, osc1Wave: 0, osc2Oct: 0, osc2Freq: 0.5, osc2Wave: 0.5, osc1Lvl: 0.7, osc2Lvl: 0.55, glide: 0.08,
+    cutoff: 0.28, res: 0.4, egAmt: 0.78, kbAmt: 0.5, fA: 0, fD: 0.35, fS: 0.1, fR: 0.25, aA: 0, aD: 0.4, aS: 0.5, aR: 0.2,
+    lfoRate: 0.35, lfoWave: 3, lfoCut: 0.15, gateLen: 0.35, vol: 0.55,
+  });
+  n.data = { steps: mSeq([0, null, null, 0, null, null, 12, null, 0, null, null, 7, null, 10, null, null]), len: 16 };
+  const d = mod('D', 'd1', {
+    vco1Freq: 0.32, vco1Eg: 0.82, vcoDecay: 0.28, vco2Freq: 0.55, vco2Lvl: 0.25, vco2Wave: 1, fm: 0.12,
+    noiseLvl: 0.2, cutoff: 0.5, res: 0.3, vcfDecay: 0.3, vcfEg: 0.7, noiseMod: 0.12, vcaDecay: 0.2, vol: 0.6, seqPitch: 0,
+    ...Object.fromEntries([0.5, 0.5, 0.56, 0.5, 0.44, 0.5, 0.6, 0.53].map((v, k) => [`pitch${k + 1}`, v])),
+    ...Object.fromEntries([1, 0.3, 0.6, 0.35, 0.9, 0.3, 0.7, 0.5].map((v, k) => [`vel${k + 1}`, v])),
+  });
+  const a = mod('A', 'a1', {
+    v1Coarse: 0.5, v2Coarse: 0.5, v2Fine: 0.52, v2Pw: 0.5, v3Coarse: 0.15, v3Low: 1, v3Kb: 1,
+    fRing: 0.25, fV1: 0.3, fV2: 0.5, fV3: 0, cutoff: 0.35, res: 0.5, fAdsr: 0.5, fKb: 0.5,
+    attack: 0.02, decay: 0.45, sustain: 0.3, release: 0.5, arA: 0.05, arR: 0.5, vcaAr: 1, reverb: 0.5, gateLen: 0.6, vol: 0.45,
+  });
+  a.data = { steps: mSeq([24, null, null, 31, null, 27, null]), len: 7 };
+  const x = mod('X', 'x1', { mode: 0, progLvl: 0.8, res: 0.55, shift: 0.5, lfoRate: 0.2, lfoAmt: 0.25, vol: 0.45 });
+  const mixes = {
+    l1: [0.7, 0.35, 0.4, 0.45], s1: [0.55, 0.5, 0.5, 0.15], m1: [0.6, 0.62, 0.3, 0.5], n1: [0.75, 0.5, 0.1, 0],
+    d1: [0.7, 0.45, 0.15, 0.1], a1: [0.55, 0.7, 0.5, 0.3], x1: [0.6, 0.3, 0.45, 0.25],
+  };
+  const mods = [l, s, m, n, d, a, x];
+  mods.forEach((u) => { const [level, pan, fx1, fx2] = mixes[u.id]; Object.assign(u.mix, { level, pan, fx1, fx2 }); });
+  return {
+    mods,
+    cables: [
+      // relógio: o L avança todos os sequenciadores
+      ['l1', 'clockOut', 's1', 'clock'], ['l1', 'clockOut', 'm1', 'tempo'], ['l1', 'clockOut', 'n1', 'clock'],
+      ['l1', 'clockOut', 'a1', 'clock'], ['l1', 'clockOut', 'd1', 'adv'],
+      // ritmo generativo: bits do L disparam a percussão e o S&H do A
+      ['l1', 'trig1Out', 'd1', 'trig'], ['l1', 'trig2Out', 'a1', 'shClk'],
+      // harmonia: a progressão do S transpõe tudo
+      ['s1', 'seq1', 'm1', 'voct'], ['s1', 'seq1', 'n1', 'voct'], ['s1', 'seq1', 'l1', 'vcoCv'],
+      ['s1', 'seq1', 'a1', 'kbCv'], ['s1', 'seq1', 's1', 'vco2'], ['s1', 'seq2', 'd1', 'vco1Cv'],
+      // vocoder: percussão e bleeps do L modulam os sub-harmónicos do S
+      ['d1', 'vca', 'x1', 'program'], ['l1', 'vca', 'x1', 'program'],
+      ['s1', 'vco1', 'x1', 'carrier'], ['s1', 'sub1', 'x1', 'carrier'],
+      // modulação: o SEQ 2 do L (CV aleatória) passa pelo MULT do M para o shift do X e o corte do M
+      ['l1', 'seq2', 'm1', 'mult'], ['m1', 'mult1', 'x1', 'shiftCv'], ['m1', 'mult2', 'm1', 'cutoff'],
+      ['l1', 'seq1', 's1', 'cutoff'],
+      // LFO lento do A atenuado pelo VC MIX do M a abrir o fold do L
+      ['a1', 'v3Tri', 'm1', 'mix1'], ['m1', 'vcMix', 'l1', 'fold'],
+      // pormenores: S&H do A no filtro da percussão, LFO do N na largura de pulso do A, velocidade alonga o decay
+      ['a1', 'sh', 'd1', 'vcfMod'], ['n1', 'lfo', 'a1', 'v2Pwm'], ['d1', 'velOut', 'd1', 'vcaDecay'],
+    ],
+    fx: { ...FX, delayTime: (0.45 - 0.03) / 0.97, delayFb: 0.45, delayMix: 0.45, reverb: 0.55 },
+  };
+}
 
 // Patches clássicos: técnicas conhecidas destas máquinas, montadas à mão (não são cópias dos livros de patches)
 PRESETS.push(
