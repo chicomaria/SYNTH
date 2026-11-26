@@ -15,6 +15,12 @@ Site: https://chicomaria.github.io/SYNTH/
 | Pulso X | Spectravox | Banco de 10 filtros com spectral shift e LFO, modo vocoder com entrada de programa |
 | Pulso N | Sirin | 2 VCOs com forma de onda contínua e hard sync, filtro ladder, dois ADSR, LFO com S&H, sequenciador de até 32 passos |
 | Pulso A | ARP 2600 | 3 VCOs, ring mod, ruído com cor, sample & hold, lag, filtro ladder, ADSR e AR, VCA, reverb de mola, ligações normalizadas e 40 pontos de patch |
+| Pulso U | Utilitários | 4 atenuversores (sem cabo dão uma tensão fixa) com saída de mistura, 2 VCAs, lógica AND/OR/XOR, divisor de relógio (÷2, ÷4, ÷N) e slew |
+| Pulso T | Sequenciador aleatório com memória | Registo de 16 bits que se repete e muda aos poucos (CHANGE), quantizador de escala, saídas de CV, gate e bits, e um gerador de ritmos euclidianos |
+| Pulso G | Grandmother | 2 VCOs com 4 formas de onda e sync, filtro HP + ladder, ADSR, modulação com S&H, arpejador sobre as notas da sequência e reverb de mola |
+| Pulso B | West coast (ao estilo do Buchla Easel) | Oscilador complexo com wavefolder e simetria, oscilador de modulação com FM, pulser, sequenciador de 5 passos, envelope e dois low pass gates |
+| Pulso K | MS-20 | 2 VCOs (com ring), filtros HP e LP agressivos com saturação, EG 1 (delay/attack/release), EG 2 ADSR, MG com forma variável, S&H e processador de sinal externo (envelope, gate e conversão de frequência em tensão) |
+| Pulso V | VCS3 | Três osciladores, ruído com cor, filtro, ring mod, reverb, trapézio e joystick ligados por uma matriz de 16×16 pinos em vez de cabos |
 
 ## Rack
 
@@ -25,7 +31,7 @@ Site: https://chicomaria.github.io/SYNTH/
 - **Zoom:** botões − e + na barra de topo.
 - **Mixer:** fixo no topo, um canal vertical por módulo com LED de sinal, botões M (mute), S (solo) e ↧ (vai até ao módulo no rack), envios FX1 (reverb) e FX2 (delay), PAN e LEVEL. Ao lado ficam o bloco FX/MASTER e o osciloscópio.
 - **Ecossistema generativo** (Memórias): os sete módulos ligados num patch que toca sozinho e vai mudando. O L dá o relógio a todos e os seus padrões de bits, que se vão corrompendo, disparam a percussão do D e o S&H do A. O S faz uma progressão de quatro acordes que transpõe o M, o N, o L e o A. M, N e A tocam frases de 11, 16 e 7 passos, por isso só se alinham de vez em quando. O X vocoda a percussão e os bleeps do L sobre os sub-harmónicos do S. O VC MIX do M serve de atenuador para o LFO lento do A abrir o fold do L.
-- **Clássicos:** patches que usam técnicas conhecidas destas máquinas (PWM, acid, bombo com envelope de afinação, FM com hard sync, sincronia M+D, polirritmos). Foram montados à mão, não copiados dos livros de patches do fabricante.
+- **Clássicos:** patches que usam técnicas conhecidas destas máquinas (PWM, acid, bombo com envelope de afinação, FM com hard sync, sincronia M+D, polirritmos, máquina de Turing, bongós west coast, arpejo com mola, MS-20 a seguir outro sintetizador, matriz VCS3). Foram montados à mão, não copiados dos livros de patches do fabricante.
 - **Modo Ícones** (Visual → Modo): sem knobs nem patch bay. Cada módulo é um núcleo com ícones à volta (oscilador, filtro, envelopes, tempo, mix, envio FX, tocar). Arrastar um ícone muda dois parâmetros ao mesmo tempo (horizontal e vertical); duplo toque repõe o valor. O ícone de sequência gera e deforma a sequência (densidade e alcance). Arrastar o núcleo de um módulo para junto de outro cria cabos automaticamente (mais perto, mais cabos). Os botões aleatórios funcionam também neste modo, e o patch aleatório espalha os módulos.
 - **Visual:** menu com skins (Pulso, Clássico, Funky, Anos 70, Aleatório), estilo dos knobs (arco, clássico, aleatório) e layout (Clássico ou Compacto). No Clássico, todos os módulos têm a mesma largura e cada knob, interruptor e botão fica na sua posição do painel, com três tamanhos: knob grande, médio e pequeno (os interruptores e botões têm o footprint do knob pequeno). As posições vêm do conhecimento dos painéis, não foram medidas em fotografias.
 - **Banco de patches:** guarda o rack atual com um nome (módulos, knobs, sequências, cabos, mixer e efeitos), carrega, substitui ou apaga. O banco fica no browser e pode ser exportado e importado como ficheiro `.json`.
@@ -40,6 +46,10 @@ Site: https://chicomaria.github.io/SYNTH/
 - Pulso S: quantização só em 12-ET; sem modos de afinação justa.
 - Pulso N: o Sirin real é uma caixa de secretária com poucos controlos e menus; aqui os parâmetros estão todos no painel, e o sequenciador é o mesmo do Pulso M (sem arpejador).
 - Pulso A: os sliders do 2600 aparecem como knobs, o teclado é o do sequenciador, e as ligações normalizadas foram simplificadas.
+- Pulso U, T, G, B, K e V também foram feitos a partir da arquitetura geral, sem conferir com os manuais. O Pulso T segue a ideia do Turing Machine (um módulo Eurorack), não um aparelho da Moog.
+- Pulso B: o low pass gate é um modelo simples de vactrol (abre depressa, fecha devagar). Não há teclado de toque nem as tensões predefinidas do Easel.
+- Pulso K: o conversor de frequência em tensão do ESP conta cruzamentos por zero, por isso só segue bem sons simples e graves com pouco ruído.
+- Pulso V: os pinos têm dois valores (cheio e atenuado), em vez das várias resistências do aparelho real, e o joystick são dois knobs.
 - Não há MIDI.
 
 ## Correr localmente
