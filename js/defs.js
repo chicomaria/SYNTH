@@ -16,6 +16,14 @@ const DEC = { r: [0.2, 0.7] };
 const CUT = { r: [0.3, 0.8], size: 'lg' };
 const NR = { noRand: true }; // entradas que o patch aleatório evita
 
+// Matriz do Pulso V: linhas são fontes, colunas são destinos. Cada pino vale 1 (cheio) ou 0,3 (atenuado).
+export const V_ROWS = ['OSC 1 SINE', 'OSC 1 SAW', 'OSC 2 PULSE', 'OSC 2 TRI', 'OSC 3 PULSE', 'OSC 3 TRI', 'NOISE', 'INPUT 1',
+  'INPUT 2', 'FILTER', 'TRAPEZOID', 'ENV SIGNAL', 'RING', 'REVERB', 'JOY X', 'JOY Y'];
+export const V_COLS = ['OUT 1', 'OUT 2', 'RING A', 'RING B', 'REVERB', 'ENV IN', 'FILTER IN', 'OSC 1 FREQ',
+  'OSC 2 FREQ', 'OSC 3 FREQ', 'FILTER FREQ', 'FILTER Q', 'ENV DECAY', 'OUT LEVEL', 'OSC 2 SHAPE', 'MATRIX OUT'];
+// som de partida: pulso do OSC 2 no filtro, filtro no envelope, envelope nas saídas e no reverb; OSC 3 lento e trapézio no filtro
+const V_DEFAULT_PINS = { '2,6': 1, '9,5': 1, '11,0': 1, '11,1': 1, '11,4': 0.3, '13,0': 0.3, '13,1': 0.3, '5,10': 0.3, '10,10': 1, '5,8': 0.3 };
+
 export const TYPES = {
   M: {
     name: 'PULSO M', sub: 'melódico · arquitetura do Mother-32', hasRun: true, custom: 'mseq', customWide: true,
@@ -228,6 +236,152 @@ export const TYPES = {
     data: () => ({ steps: mSeq([0, null, 0, 12, null, 7, 10, null, 0, 3, null, 0, 15, 12, 7, null]), len: 16 }),
     lit: () => [],
   },
+
+  U: {
+    name: 'PULSO U', sub: 'utilitários · atenuadores, VCAs, lógica, divisor e slew', hasRun: false,
+    controls: [
+      H('ATENUVERSORES / MIX'), ...[1, 2, 3, 4].map((n) => K(`att${n}`, `ATT ${n}`, 0.75, { bipolar: true })),
+      H('VCA'), K('vca1', 'VCA 1 GAIN', 0), K('vca2', 'VCA 2 GAIN', 0),
+      H('DIVISOR / SLEW'), K('div', 'DIV N', 2 / 15, { format: int16 }), K('rise', 'SLEW RISE', 0.3), K('fall', 'SLEW FALL', 0.3),
+      K('vol', 'VCA → MIXER', 0.8, VOL),
+    ],
+    jacks: [
+      i('in1', 'IN 1'), i('in2', 'IN 2'), i('in3', 'IN 3'), i('in4', 'IN 4'),
+      o('out1', 'OUT 1'), o('out2', 'OUT 2'), o('out3', 'OUT 3'), o('out4', 'OUT 4'),
+      i('vca1In', 'VCA 1 IN'), i('vca1Cv', 'VCA 1 CV'), o('vca1Out', 'VCA 1 OUT'), o('mix', 'MIX 1-4'),
+      i('vca2In', 'VCA 2 IN'), i('vca2Cv', 'VCA 2 CV'), o('vca2Out', 'VCA 2 OUT'), o('slewOut', 'SLEW OUT'),
+      i('logA', 'LOGIC A'), i('logB', 'LOGIC B'), o('and', 'AND'), o('or', 'OR'), o('xor', 'XOR'),
+      i('clk', 'DIV CLOCK'), i('reset', 'DIV RESET', NR), o('div2', '÷2'), o('div4', '÷4'), o('divN', '÷N'),
+      i('slewIn', 'SLEW IN'),
+    ],
+    lit: () => [],
+  },
+
+  T: {
+    name: 'PULSO T', sub: 'sequenciador aleatório com memória e ritmo euclidiano', hasRun: true, custom: 'tbits', customWide: true,
+    controls: [
+      H('REGISTO'), K('change', 'CHANGE', 0.25, { size: 'lg', seq: true, r: [0, 0.6] }),
+      K('len', 'LENGTH', 6 / 14, { seq: true, format: (v) => `${2 + Math.round(14 * v)}` }),
+      K('range', 'RANGE', 0.3, { seq: true, format: (v) => `${Math.round(v * 48)} st` }),
+      S('scale', 'SCALE', ['OFF', 'CHROM', 'MAJ', 'MIN', 'PENTA'], 4, { keep: true }), S('oct', 'OCTAVE', ['−1', '0', '+1', '+2'], 1),
+      H('EUCLIDIANO'), K('eSteps', 'STEPS', 15 / 15, { seq: true, format: int16 }), K('eHits', 'HITS', 5 / 16, { seq: true, format: (v) => `${Math.round(16 * v)}` }),
+      K('eRot', 'ROTATE', 0, { seq: true, format: (v) => `${Math.round(15 * v)}` }),
+      H('TEMPO'), K('tempo', 'TEMPO', 0.602, { keep: true, format: (v) => `${Math.round(30 * Math.pow(10, v))}` }), K('gateLen', 'GATE LENGTH', 0.5),
+    ],
+    jacks: [
+      i('clock', 'CLOCK', NR), i('reset', 'RESET', NR), i('run', 'RUN/STOP', NR), i('changeCv', 'CHANGE CV'), i('rangeCv', 'RANGE CV'), i('transpose', 'TRANSPOSE'),
+      o('cv', 'CV (1V/OCT)'), o('raw', 'RANDOM'), o('gate', 'GATE'), o('bit2', 'BIT 2'), o('bit4', 'BIT 4'),
+      o('euclid', 'EUCLID'), o('clockOut', 'CLOCK'),
+    ],
+    lit: () => [],
+  },
+
+  G: {
+    name: 'PULSO G', sub: 'semi-modular com arpejador e mola · arquitetura do Grandmother', hasRun: true, custom: 'mseq', customWide: true,
+    controls: [
+      H('OSCILLATORS'), S('osc1Oct', 'OSC 1 OCT', ["32'", "16'", "8'", "4'"], 2), S('osc1Wave', 'OSC 1 WAVE', ['TRI', 'SAW', 'SQ', 'PULSE'], 1),
+      S('osc2Oct', 'OSC 2 OCT', ["32'", "16'", "8'", "4'"], 1), S('osc2Wave', 'OSC 2 WAVE', ['TRI', 'SAW', 'SQ', 'PULSE'], 2),
+      K('osc2Freq', 'OSC 2 FREQ', 0.5, { bipolar: true, r: [0.4, 0.6] }), S('sync', 'HARD SYNC', ['OFF', 'ON']), K('glide', 'GLIDE', 0, { r: [0, 0.4] }),
+      H('MIXER'), K('osc1Lvl', 'OSC 1', 0.8, LVL), K('osc2Lvl', 'OSC 2', 0.6), K('noiseLvl', 'NOISE', 0, { r: [0, 0.3] }),
+      H('FILTER'), K('hpCut', 'HP CUTOFF', 0, { r: [0, 0.4] }), K('cutoff', 'CUTOFF', 0.42, CUT), K('res', 'RESONANCE', 0.3, { r: [0, 0.8] }),
+      K('egAmt', 'EG AMOUNT', 0.7, { bipolar: true, r: [0.5, 1] }), S('kbAmt', 'KB TRACK', ['OFF', '½', 'FULL'], 1),
+      H('ENVELOPE'), K('attack', 'ATTACK', 0, { r: [0, 0.35] }), K('decay', 'DECAY', 0.4, DEC), K('sustain', 'SUSTAIN', 0.4), K('release', 'RELEASE', 0.3, { r: [0, 0.6] }),
+      S('vcaMode', 'VCA', ['ENV', 'DRONE'], 0, { keep: true }),
+      H('MODULATION'), K('lfoRate', 'RATE', 0.4), S('lfoWave', 'WAVE', ['TRI', 'SQ', 'SAW', 'RAMP', 'S&H']),
+      K('modPitch', 'MOD → PITCH', 0, { r: [0, 0.2] }), K('modCut', 'MOD → CUTOFF', 0, { r: [0, 0.5] }), K('modPw', 'MOD → PW', 0, { r: [0, 0.6] }),
+      H('ARP / SEQ / REVERB'), S('arp', 'ARP', ['OFF', 'UP', 'UP/DN', 'RAND']), S('arpOct', 'ARP OCT', ['1', '2', '3']),
+      K('tempo', 'TEMPO', 0.602, { keep: true, format: (v) => `${Math.round(30 * Math.pow(10, v))}` }), K('gateLen', 'GATE LENGTH', 0.5),
+      K('reverb', 'SPRING MIX', 0.2, { r: [0, 0.6] }), K('vol', 'VOLUME', 0.7, VOL),
+    ],
+    jacks: [
+      i('voct', '1V/OCT'), i('osc2Cv', 'OSC 2 CV'), i('pwm', 'PW MOD'), i('gate', 'GATE'), i('cutoff', 'CUTOFF'), i('res', 'RES'),
+      i('ext', 'EXT AUDIO'), i('vcaCv', 'VCA CV'), i('lfoRate', 'RATE'), i('reverbIn', 'SPRING IN'),
+      i('clock', 'CLOCK', NR), i('run', 'RUN/STOP', NR), i('reset', 'RESET', NR),
+      o('vco1', 'OSC 1'), o('vco2', 'OSC 2'), o('noise', 'NOISE'), o('vcf', 'VCF'), o('env', 'ENV'),
+      o('lfoTri', 'MOD TRI'), o('lfoSq', 'MOD SQ'), o('sh', 'S&H'), o('kb', 'KB'), o('gateOut', 'GATE'), o('clockOut', 'CLOCK'),
+      o('spring', 'SPRING OUT'), o('vca', 'OUT'),
+    ],
+    data: () => ({ steps: mSeq([0, 7, 12, 3, 0, 10, 7, 15]), len: 8 }),
+    lit: () => [],
+  },
+
+  B: {
+    name: 'PULSO B', sub: 'west coast · oscilador complexo e low pass gates, ao estilo do Easel', hasRun: true,
+    controls: [
+      H('PULSER / SEQUENCER'), K('period', 'PULSER RATE', 0.6, { size: 'lg', keep: true, format: (v) => `${Math.round(3 * Math.pow(400, v))}/min` }),
+      ...[1, 2, 3, 4, 5].map((n) => K(`s${n}`, `${n}`, [0.5, 0.62, 0.42, 0.7, 0.55][n - 1], { bipolar: true, seq: true, size: 'sm', r: [0.3, 0.7] })),
+      S('steps', 'STEPS', ['3', '4', '5'], 2, { seq: true }), S('quant', 'QUANTIZE', ['OFF', '12-ET'], 1, { keep: true }),
+      H('ENVELOPE'), K('attack', 'ATTACK', 0.02, { r: [0, 0.4] }), K('hold', 'SUSTAIN', 0.1, { r: [0, 0.4] }), K('decay', 'DECAY', 0.4, DEC),
+      S('envMode', 'MODE', ['TRANS', 'SELF']),
+      H('MOD OSC'), K('modFreq', 'MOD FREQ', 0.55, { size: 'lg' }), S('modWave', 'MOD WAVE', ['SAW', 'SQ', 'TRI'], 2),
+      S('modRange', 'RANGE', ['AUDIO', 'LOW']), K('index', 'FM INDEX', 0.2, { r: [0, 0.6] }), K('modSeq', 'SEQ → MOD', 0, { r: [0, 0.5] }),
+      H('COMPLEX OSC'), K('pitch', 'PITCH', 0.5, { bipolar: true, size: 'lg', r: [0.35, 0.65] }), K('seqAmt', 'SEQ → PITCH', 0.5),
+      K('timbre', 'TIMBRE', 0.25), K('timbreMod', 'MOD → TIMBRE', 0.2, { r: [0, 0.6] }), K('timbreEnv', 'ENV → TIMBRE', 0.4), K('sym', 'SYMMETRY', 0.5, { bipolar: true }),
+      H('LOW PASS GATES'), K('lpg1', 'LPG 1 · MOD', 0, { r: [0, 0.6] }), S('lpg1Mode', 'LPG 1 MODE', ['VCA', 'COMBO', 'LP'], 1),
+      K('lpg2', 'LPG 2 · COMPLEX', 0.85, LVL), S('lpg2Mode', 'LPG 2 MODE', ['VCA', 'COMBO', 'LP'], 1), K('vol', 'VOLUME', 0.7, VOL),
+    ],
+    jacks: [
+      i('clock', 'PULSER TRIG', NR), i('run', 'RUN/STOP', NR), i('reset', 'SEQ RESET', NR), i('envTrig', 'ENV TRIG'),
+      i('pitchCv', 'PITCH CV'), i('modCv', 'MOD CV'), i('timbreCv', 'TIMBRE CV'), i('indexCv', 'INDEX CV'),
+      i('lpg1Cv', 'LPG 1 CV'), i('lpg2Cv', 'LPG 2 CV'), i('lpg1In', 'LPG 1 IN'), i('lpg2In', 'LPG 2 IN'),
+      o('complex', 'COMPLEX'), o('mod', 'MOD OSC'), o('lpg1Out', 'LPG 1'), o('lpg2Out', 'LPG 2'),
+      o('env', 'ENV'), o('pulse', 'PULSER'), o('seq', 'SEQ'), o('out', 'OUT'),
+    ],
+    lit: ([s]) => [`s${s + 1}`],
+  },
+
+  K: {
+    name: 'PULSO K', sub: 'dois filtros agressivos e processador externo · arquitetura do MS-20', hasRun: true, custom: 'mseq', customWide: true,
+    controls: [
+      H('VCO 1'), S('v1Scale', 'SCALE', ["32'", "16'", "8'", "4'"], 2), S('v1Wave', 'WAVE', ['TRI', 'SAW', 'PULSE', 'NOISE'], 1), K('pw', 'PW', 0.5),
+      H('VCO 2'), S('v2Scale', 'SCALE', ["32'", "16'", "8'", "4'"], 2), S('v2Wave', 'WAVE', ['SAW', 'SQ', 'NARROW', 'RING'], 0),
+      K('v2Pitch', 'PITCH', 0.5, { bipolar: true, r: [0.4, 0.6] }), K('v1Lvl', 'VCO 1 LEVEL', 0.8, LVL), K('v2Lvl', 'VCO 2 LEVEL', 0.5),
+      K('porta', 'PORTAMENTO', 0, { r: [0, 0.4] }), K('mgPitch', 'MG → FREQ', 0, { r: [0, 0.2] }), K('egPitch', 'EG 1 → FREQ', 0.5, { bipolar: true, r: [0.4, 0.6] }),
+      H('HPF / LPF'), K('hpCut', 'HP CUTOFF', 0.15, { r: [0, 0.5] }), K('hpPeak', 'HP PEAK', 0.2, { r: [0, 0.8] }),
+      K('hpMg', 'HP MG', 0, { r: [0, 0.4] }), K('hpEg', 'HP EG 2', 0.5, { bipolar: true }),
+      K('lpCut', 'LP CUTOFF', 0.45, CUT), K('lpPeak', 'LP PEAK', 0.4, { r: [0, 0.9] }), K('lpMg', 'LP MG', 0, { r: [0, 0.4] }), K('lpEg', 'LP EG 2', 0.7, { bipolar: true }),
+      H('EG 1 / EG 2 / MG'), K('e1Delay', 'EG 1 DELAY', 0, { r: [0, 0.3] }), K('e1Attack', 'EG 1 ATTACK', 0.1, { r: [0, 0.4] }), K('e1Release', 'EG 1 RELEASE', 0.3, { r: [0, 0.6] }),
+      K('attack', 'EG 2 ATTACK', 0, { r: [0, 0.35] }), K('decay', 'EG 2 DECAY', 0.4, DEC), K('sustain', 'EG 2 SUSTAIN', 0.4), K('release', 'EG 2 RELEASE', 0.3, { r: [0, 0.6] }),
+      K('mgRate', 'MG RATE', 0.4), K('mgShape', 'MG SHAPE', 0.5),
+      H('ESP / SEQ'), K('espGain', 'ESP GAIN', 0.5), K('espLo', 'ESP LOW CUT', 0.2), K('espHi', 'ESP HIGH CUT', 0.7), K('espThr', 'ESP THRESHOLD', 0.3),
+      K('tempo', 'TEMPO', 0.602, { keep: true, format: (v) => `${Math.round(30 * Math.pow(10, v))}` }), K('gateLen', 'GATE LENGTH', 0.5), K('vol', 'VOLUME', 0.6, VOL),
+    ],
+    jacks: [
+      i('voct', 'TOTAL FREQ'), i('v2Cv', 'VCO 2 FREQ'), i('ext', 'EXT SIGNAL'), i('hpCv', 'HP CUTOFF'), i('lpCv', 'LP CUTOFF'), i('vcaCv', 'VCA CV'),
+      i('gate', 'GATE'), i('trig', 'EG TRIG'), i('espIn', 'ESP IN'), i('shIn', 'S&H IN'), i('shClk', 'S&H CLOCK', NR),
+      i('clock', 'CLOCK', NR), i('run', 'RUN/STOP', NR), i('reset', 'RESET', NR),
+      o('vco1', 'VCO 1'), o('vco2', 'VCO 2'), o('hpOut', 'HPF'), o('lpOut', 'LPF'), o('mgTri', 'MG TRI'), o('mgSq', 'MG SQ'),
+      o('eg1', 'EG 1'), o('eg2', 'EG 2'), o('white', 'WHITE'), o('pink', 'PINK'), o('sh', 'S&H'),
+      o('espBp', 'ESP BPF'), o('espEnv', 'ESP ENV'), o('espCv', 'ESP F/V'), o('espGate', 'ESP GATE'),
+      o('kb', 'KB'), o('gateOut', 'GATE'), o('clockOut', 'CLOCK'), o('vca', 'OUT'),
+    ],
+    data: () => ({ steps: mSeq([0, 0, 12, null, 0, 10, null, 7, 0, null, 12, 15, null, 0, 3, null]), len: 16 }),
+    lit: () => [],
+  },
+
+  V: {
+    name: 'PULSO V', sub: 'matriz de pinos · arquitetura do VCS3', hasRun: false, custom: 'vpins', customWide: true,
+    controls: [
+      H('OSC 1 / 2'), K('o1Freq', 'OSC 1 FREQ', 0.5, { size: 'lg', r: [0.3, 0.7] }), K('o1Shape', 'OSC 1 SHAPE', 0.5),
+      K('o1Sine', 'SINE LEVEL', 0.8), K('o1Saw', 'SAW LEVEL', 0.5),
+      K('o2Freq', 'OSC 2 FREQ', 0.55, { size: 'lg', r: [0.3, 0.7] }), K('o2Shape', 'OSC 2 SHAPE', 0.5), K('o2Pulse', 'PULSE LEVEL', 0.7), K('o2Tri', 'TRI LEVEL', 0.5),
+      H('OSC 3 / RUÍDO'), K('o3Freq', 'OSC 3 FREQ', 0.25, { format: (v) => `${(0.05 * Math.pow(2, v * 14)).toFixed(2)}Hz` }), K('o3Shape', 'OSC 3 SHAPE', 0.5),
+      K('o3Pulse', 'PULSE LEVEL', 0.5), K('o3Tri', 'TRI LEVEL', 0.8), K('noiseColor', 'NOISE COLOUR', 0.5), K('noiseLvl', 'NOISE LEVEL', 0.5),
+      H('FILTRO / RING / REVERB'), K('fFreq', 'FILTER FREQ', 0.45, CUT), K('fRes', 'RESPONSE', 0.4, { r: [0, 0.85] }), K('fLvl', 'FILTER LEVEL', 0.8),
+      K('ringLvl', 'RING LEVEL', 0.6), K('revLvl', 'REVERB LEVEL', 0.6),
+      H('TRAPEZOID'), K('envA', 'ATTACK', 0.1, { r: [0, 0.5] }), K('envOn', 'ON', 0.2, { r: [0, 0.5] }), K('envD', 'DECAY', 0.4, { r: [0.1, 0.7] }),
+      K('envOff', 'OFF', 1, { format: (v) => (v > 0.98 ? 'MAN' : (v * 10).toFixed(1)) }), K('trapLvl', 'TRAP LEVEL', 0.8), K('envSig', 'SIGNAL LEVEL', 0.9),
+      H('JOYSTICK / SAÍDA'), K('joyX', 'JOY X', 0.5, { bipolar: true }), K('joyY', 'JOY Y', 0.5, { bipolar: true }),
+      K('out1', 'OUT 1 LEVEL', 0.8, { keep: true }), K('out2', 'OUT 2 LEVEL', 0.8, { keep: true }), K('vol', 'VOLUME', 0.6, VOL),
+    ],
+    jacks: [
+      i('in1', 'INPUT 1'), i('in2', 'INPUT 2'), i('trig', 'ATTACK TRIG'), i('voct', 'OSC 1+2 V/OCT'), i('fCv', 'FILTER CV'),
+      o('out1', 'OUT 1'), o('out2', 'OUT 2'), o('filter', 'FILTER'), o('trap', 'TRAPEZOID'), o('envSig', 'ENV SIGNAL'),
+      o('ring', 'RING'), o('osc3', 'OSC 3 TRI'), o('noise', 'NOISE'), o('matrix', 'MATRIX OUT'),
+    ],
+    data: () => ({ pins: { ...V_DEFAULT_PINS } }),
+    lit: () => [],
+  },
 };
 
 export const FX_CONTROLS = [
@@ -294,6 +448,41 @@ const LAYOUT = {
       ['fAdsr', 4.6, 'sm'], ['fSine', 5.4, 'sm'], ['fKb', 6.2, 'sm'], ['noiseColor', 7.4], ['vcaRing', 9.1, 'sm'], ['reverb', 10.1], ['vol', 11.5]]),
     ...at(3, [['v3Fine', 0.6, 'sm'], ['v3Fm', 1.5, 'sm'], ['v3Low', 2.4], ['v3Kb', 3.3], ['shRate', 4.6], ['porta', 5.8], ['tempo', 9.1], ['gateLen', 10.1, 'sm']]),
   } },
+  U: { cols: 4, grid: 10, rows: 2, at: {
+    ...at(0, [['att1', 0.8], ['att2', 1.9], ['att3', 3], ['att4', 4.1], ['vca1', 5.8], ['vca2', 6.9]]),
+    ...at(1, [['div', 0.8], ['rise', 1.9], ['fall', 3], ['vol', 9]]),
+  } },
+  T: { cols: 4, grid: 10, rows: 2, at: {
+    ...at(0, [['change', 0.8, 'lg'], ['len', 2.2], ['range', 3.4], ['scale', 4.6], ['oct', 5.7], ['tempo', 8.2], ['gateLen', 9.3]]),
+    ...at(1, [['eSteps', 0.8], ['eHits', 2.2], ['eRot', 3.4]]),
+  } },
+  // Pulso G: da esquerda para a direita como no painel (modulação, osciladores, misturador, filtro, envelope, saída)
+  G: { cols: 5, grid: 13, rows: 4, at: {
+    ...at(0, [['lfoRate', 0.6], ['lfoWave', 1.7], ['osc1Oct', 3], ['osc1Wave', 4], ['osc1Lvl', 5.3], ['cutoff', 7.2, 'lg'], ['res', 8.7], ['attack', 10], ['decay', 11], ['sustain', 12]]),
+    ...at(1, [['modPitch', 0.6], ['modCut', 1.7], ['osc2Oct', 3], ['osc2Wave', 4], ['osc2Lvl', 5.3], ['egAmt', 7.2], ['kbAmt', 8.7], ['release', 10], ['vcaMode', 11], ['vol', 12]]),
+    ...at(2, [['modPw', 0.6], ['glide', 1.7], ['osc2Freq', 3], ['sync', 4], ['noiseLvl', 5.3], ['hpCut', 7.2], ['reverb', 8.7], ['arp', 10], ['arpOct', 11]]),
+    ...at(3, [['tempo', 0.6], ['gateLen', 1.7]]),
+  } },
+  // Pulso B: pulser e sequenciador de 5 passos em cima, osciladores ao meio, low pass gates em baixo
+  B: { cols: 4, grid: 13, rows: 4, at: {
+    ...at(0, [['period', 0.7, 'lg'], ['s1', 2], ['s2', 3], ['s3', 4], ['s4', 5], ['s5', 6], ['steps', 7.1], ['quant', 8.1], ['attack', 9.6], ['hold', 10.7], ['decay', 11.8]]),
+    ...at(1, [['modFreq', 0.7, 'lg'], ['modWave', 2], ['modRange', 3], ['index', 4.2], ['modSeq', 5.4], ['envMode', 9.6]]),
+    ...at(2, [['pitch', 0.7, 'lg'], ['seqAmt', 2], ['timbre', 3.2], ['timbreMod', 4.4], ['timbreEnv', 5.6], ['sym', 6.8]]),
+    ...at(3, [['lpg1', 0.7], ['lpg1Mode', 1.8], ['lpg2', 3.2], ['lpg2Mode', 4.3], ['vol', 11.8]]),
+  } },
+  // Pulso K: osciladores à esquerda, os dois filtros ao centro, envelopes e MG em baixo, ESP na última linha
+  K: { cols: 6, grid: 13, rows: 4, at: {
+    ...at(0, [['v1Scale', 0.6], ['v1Wave', 1.6], ['pw', 2.6], ['porta', 3.8], ['mgPitch', 4.9], ['egPitch', 6], ['hpCut', 7.4], ['hpPeak', 8.5], ['lpCut', 9.8, 'lg'], ['lpPeak', 11.1], ['vol', 12.3]]),
+    ...at(1, [['v2Scale', 0.6], ['v2Wave', 1.6], ['v2Pitch', 2.6], ['v1Lvl', 3.8], ['v2Lvl', 4.9], ['hpMg', 7.4], ['hpEg', 8.5], ['lpMg', 9.8], ['lpEg', 11.1]]),
+    ...at(2, [['e1Delay', 0.6], ['e1Attack', 1.6], ['e1Release', 2.6], ['attack', 3.8], ['decay', 4.9], ['sustain', 6], ['release', 7.1], ['mgRate', 8.5], ['mgShape', 9.6]]),
+    ...at(3, [['espGain', 0.6], ['espLo', 1.6], ['espHi', 2.6], ['espThr', 3.6], ['tempo', 8.5], ['gateLen', 9.6]]),
+  } },
+  // Pulso V: osciladores, filtro e trapézio por cima; a matriz de pinos fica por baixo do painel
+  V: { cols: 5, grid: 13, rows: 3, at: {
+    ...at(0, [['o1Freq', 0.7, 'lg'], ['o1Shape', 1.9], ['o1Sine', 2.9], ['o1Saw', 3.9], ['o2Freq', 5.2, 'lg'], ['o2Shape', 6.4], ['o2Pulse', 7.4], ['o2Tri', 8.4], ['o3Freq', 9.7], ['o3Shape', 10.7]]),
+    ...at(1, [['noiseColor', 0.7], ['noiseLvl', 1.9], ['fFreq', 3.3, 'lg'], ['fRes', 4.6], ['fLvl', 5.6], ['ringLvl', 6.8], ['revLvl', 7.8], ['o3Pulse', 9.7], ['o3Tri', 10.7]]),
+    ...at(2, [['envA', 0.7], ['envOn', 1.7], ['envD', 2.7], ['envOff', 3.7], ['trapLvl', 4.9], ['envSig', 5.9], ['joyX', 7.4], ['joyY', 8.4], ['out1', 9.7], ['out2', 10.7], ['vol', 12]]),
+  } },
 };
 
 for (const [key, t] of Object.entries(TYPES)) {
@@ -326,8 +515,8 @@ export function normMix(mix = {}) {
 }
 
 // Relógio: saída que cada tipo usa como relógio master e entrada que aceita um relógio externo
-export const CLOCK_OUT = { M: 'assign', D: 'trigOut', S: 'clockOut', L: 'clockOut', N: 'clockOut', A: 'clockOut' };
-export const CLOCK_IN = { M: 'tempo', D: 'adv', S: 'clock', L: 'clock', N: 'clock', A: 'clock' };
+export const CLOCK_OUT = { M: 'assign', D: 'trigOut', S: 'clockOut', L: 'clockOut', N: 'clockOut', A: 'clockOut', T: 'clockOut', G: 'clockOut', B: 'pulse', K: 'clockOut' };
+export const CLOCK_IN = { M: 'tempo', D: 'adv', S: 'clock', L: 'clock', N: 'clock', A: 'clock', T: 'clock', G: 'clock', B: 'clock', K: 'clock', V: 'trig' };
 const mod = (type, id, p = {}) => { const m = newModule(type, id); Object.assign(m.p, p); return m; };
 const FX = Object.fromEntries(FX_CONTROLS.map((c) => [c.id, c.def]));
 
@@ -520,6 +709,53 @@ PRESETS.push(
       mods: [mod('A', 'a1', { fRing: 0.6, fV1: 0.2, fV2: 0.3, v2Coarse: 0.62, res: 0.6, cutoff: 0.45, shRate: 0.6, reverb: 0.35 })],
       cables: [['a1', 'sh', 'a1', 'vcfFm']], fx: { ...FX },
     }),
+  },  {
+    name: 'Máquina de Turing', classic: true, about: 'T + M + U: o registo aleatório toca o M (CV → 1V/OCT, GATE → GATE) e um atenuador do U leva o RANDOM ao filtro',
+    make: () => {
+      const m = mod('M', 'm1', { wave: 1, cutoff: 0.35, res: 0.6, vcfModAmt: 0.5, decay: 0.35, glide: 0.1, vcoModAmt: 0.3 });
+      m.data = { steps: mSeq(Array(16).fill(null)), len: 16 };
+      return {
+        mods: [mod('T', 't1', { change: 0.15, range: 0.5, scale: 4 }), m, mod('U', 'u1', { att1: 0.6 })],
+        cables: [['t1', 'cv', 'm1', 'voct'], ['t1', 'gate', 'm1', 'gate'], ['t1', 'raw', 'u1', 'in1'], ['u1', 'out1', 'm1', 'cutoff']],
+        fx: { ...FX },
+      };
+    },
+  },
+  {
+    name: 'Bongós west coast', classic: true, about: 'B: o pulser dispara o envelope, o low pass gate fecha devagar como um vactrol e o FM dá o corpo',
+    make: () => ({
+      mods: [mod('B', 'b1', { period: 0.66, timbre: 0.3, timbreEnv: 0.55, timbreMod: 0.15, index: 0.28, modFreq: 0.62, attack: 0, hold: 0, decay: 0.3, lpg2Mode: 1, seqAmt: 0.6, vol: 0.85 })],
+      cables: [], fx: { ...FX },
+    }),
+  },
+  {
+    name: 'Arpejo com mola', classic: true, about: 'G: arpejador para cima e para baixo em duas oitavas sobre um acorde menor, LFO no filtro e reverb de mola',
+    make: () => {
+      const g = mod('G', 'g1', { arp: 2, arpOct: 1, cutoff: 0.36, res: 0.45, egAmt: 0.75, decay: 0.3, sustain: 0.2, lfoRate: 0.2, modCut: 0.25, reverb: 0.45, glide: 0.05 });
+      g.data = { steps: mSeq([0, 3, 7, 10]), len: 4 };
+      return { mods: [g], cables: [], fx: { ...FX } };
+    },
+  },
+  {
+    name: 'MS-20 a seguir', classic: true, about: 'N + K + U: o ESP do K ouve o N e converte a afinação em tensão (F/V → TOTAL FREQ), o gate do ESP abre os envelopes',
+    make: () => {
+      const k = mod('K', 'k1', { v1Scale: 2, v2Scale: 3, v2Wave: 1, v2Lvl: 0.4, lpCut: 0.35, lpPeak: 0.7, hpCut: 0.2, lpEg: 0.75, decay: 0.35, espLo: 0.05, espHi: 0.2, espGain: 0.6, espThr: 0.25, vol: 0.5 });
+      k.data = { steps: mSeq(Array(16).fill(null)), len: 16 };
+      return {
+        mods: [mod('N', 'n1', { vol: 0.5 }), k, mod('U', 'u1', { att1: 0.7 })],
+        cables: [['n1', 'clockOut', 'k1', 'clock'], ['n1', 'vca', 'k1', 'espIn'], ['k1', 'espCv', 'k1', 'voct'], ['u1', 'out1', 'k1', 'voct'], ['k1', 'espGate', 'k1', 'gate']],
+        fx: { ...FX },
+      };
+    },
+  },
+  {
+    name: 'Matriz VCS3', classic: true, about: 'V: só pinos, sem cabos. O trapézio repete-se sozinho, o OSC 3 lento mexe no filtro e no OSC 2, o ring junta OSC 1 e OSC 3',
+    make: () => {
+      const v = mod('V', 'v1', { envOff: 0.45, envA: 0.15, envOn: 0.25, envD: 0.45, o3Freq: 0.22, o1Freq: 0.45, o2Freq: 0.55, fRes: 0.55, revLvl: 0.7, vol: 0.85 });
+      v.data = { pins: { '2,6': 1, '3,6': 0.3, '9,5': 1, '11,0': 1, '11,1': 1, '11,4': 1, '13,0': 0.3, '13,1': 0.3,
+        '5,10': 1, '10,10': 1, '5,8': 0.3, '0,2': 1, '4,3': 1, '12,6': 0.3, '15,7': 0.3 } };
+      return { mods: [v], cables: [], fx: { ...FX } };
+    },
   },
 );
 
@@ -555,6 +791,19 @@ export function randomMSeq(len) {
     steps[k] = { n: k === 0 ? 0 : scale[Math.floor(Math.pow(Math.random(), 1.6) * scale.length)], r: rest };
   }
   return steps;
+}
+
+// Pinos aleatórios para o Pulso V: um caminho de áudio até às saídas e algumas modulações
+export function randomPins() {
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const pins = {};
+  const audio = pick([0, 1, 2, 3, 4, 6]);
+  pins[`${audio},${pick([6, 2, 5])}`] = 1;
+  pins[`${pick([0, 2, 4])},3`] = 0.3;
+  pins['9,5'] = 1; pins['12,6'] = 0.3;
+  pins[`11,0`] = 1; pins[`11,1`] = 1; pins[`11,4`] = 0.3; pins['13,0'] = 0.3;
+  for (let k = 0; k < 3 + Math.floor(Math.random() * 3); k++) pins[`${pick([3, 5, 6, 10, 14, 15])},${pick([7, 8, 9, 10, 11, 12, 14])}`] = Math.random() < 0.5 ? 1 : 0.3;
+  return pins;
 }
 
 // Patch aleatório: alguns cabos entre saídas e entradas de todos os módulos

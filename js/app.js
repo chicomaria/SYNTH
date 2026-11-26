@@ -1,8 +1,8 @@
-import { Engine } from './engine.js?v=12';
-import { Knob } from './knob.js?v=12';
-import { Scope } from './scope.js?v=12';
-import { createStage } from './stage.js?v=12';
-import { TYPES, FX_CONTROLS, PRESETS, CLOCK_IN, CLOCK_OUT, newModule, normMix, randomParams, randomMSeq, randomCables, noteName } from './defs.js?v=12';
+import { Engine } from './engine.js?v=13';
+import { Knob } from './knob.js?v=13';
+import { Scope } from './scope.js?v=13';
+import { createStage } from './stage.js?v=13';
+import { TYPES, FX_CONTROLS, PRESETS, CLOCK_IN, CLOCK_OUT, V_ROWS, V_COLS, newModule, normMix, randomParams, randomMSeq, randomCables, randomPins, noteName } from './defs.js?v=13';
 
 const STORAGE_KEY = 'pulso-rack-v3';
 const DEFAULT_VIEW = { mode: 'rack', skin: 'pulso', knobs: 'arc', layout: 'original', fit: 'fixed', fontScale: 1, knobScale: 1, vars: null, mixMin: false, scopeMin: false };
@@ -332,6 +332,70 @@ const CUSTOM = {
     };
     return wrap;
   },
+  // T: registo de 16 bits (o comprimento fica destacado) e padrão euclidiano
+  tbits(m, u) {
+    const wrap = el('div', 'custom');
+    const reg = el('div', 'bits'), euc = el('div', 'bits');
+    reg.appendChild(el('span', 'readout', 'BITS'));
+    euc.appendChild(el('span', 'readout', 'EUCLID'));
+    const bits = Array.from({ length: 16 }, (_, i) => {
+      const b = btn('', `Bit ${i + 1}: toca para inverter`, () => engine.send({ t: 'cmd', id: m.id, c: 'bit', i }), 'bit');
+      reg.appendChild(b);
+      return b;
+    });
+    const cells = Array.from({ length: 16 }, () => { const b = el('span', 'bit'); euc.appendChild(b); return b; });
+    const bar = el('div', 'btn-row');
+    bar.append(btn('novo padrão', 'Gera um registo novo', async () => { await wake(); engine.send({ t: 'cmd', id: m.id, c: 'rseq' }); }));
+    wrap.append(el('h3', 'sec', 'REGISTO · CHANGE no zero repete o padrão, no máximo é aleatório'), bar, reg, euc);
+    let last = [0, 8, -1];
+    const draw = () => {
+      const [mask, len, e] = last;
+      bits.forEach((b, i) => { b.classList.toggle('on', !!(mask & (1 << i))); b.classList.toggle('dim', i >= len); });
+      const n = Math.round(1 + 15 * m.p.eSteps), k = Math.min(n, Math.round(16 * m.p.eHits)), r = Math.round(15 * m.p.eRot);
+      cells.forEach((c, i) => {
+        c.style.visibility = i < n ? 'visible' : 'hidden';
+        c.classList.toggle('on', i < n && k > 0 && (((i + r) % n) * k) % n < k);
+        c.classList.toggle('playing', i === e);
+      });
+    };
+    u.onStatus = (st) => { last = st; draw(); };
+    u.redraw = draw;
+    draw();
+    return wrap;
+  },
+  // V: matriz de pinos; cada toque roda entre sem pino, pino cheio e pino atenuado
+  vpins(m, u) {
+    const wrap = el('div', 'custom');
+    const send = () => { engine.send({ t: 'data', id: m.id, k: 'pins', v: m.data.pins }); save(); };
+    const bar = el('div', 'btn-row');
+    bar.append(
+      btn('ATTACK', 'Dispara o trapézio', async () => { await wake(); engine.send({ t: 'cmd', id: m.id, c: 'trig' }); }),
+      btn('limpar pinos', 'Tira todos os pinos', () => { m.data.pins = {}; send(); draw(); }),
+    );
+    const grid = el('div', 'vgrid');
+    const draw = () => {
+      grid.innerHTML = '';
+      grid.appendChild(el('span', 'vcorner', 'fonte ↓ · destino →'));
+      V_COLS.forEach((c) => grid.appendChild(el('span', 'vcol', c)));
+      V_ROWS.forEach((rName, r) => {
+        grid.appendChild(el('span', 'vrow', rName));
+        V_COLS.forEach((cName, c) => {
+          const key = `${r},${c}`, lvl = (m.data.pins || {})[key] || 0;
+          const b = btn('', `${rName} → ${cName}`, () => {
+            const pins = (m.data.pins = m.data.pins || {});
+            const next = !lvl ? 1 : lvl === 1 ? 0.3 : 0;
+            if (next) pins[key] = next; else delete pins[key];
+            send(); draw();
+          }, `pin ${lvl === 1 ? 'full' : lvl ? 'half' : ''}`);
+          grid.appendChild(b);
+        });
+      });
+    };
+    wrap.append(el('h3', 'sec', 'MATRIZ · toca num cruzamento: pino cheio, pino atenuado, sem pino'), bar, grid);
+    u.redraw = draw;
+    draw();
+    return wrap;
+  },
 };
 
 function renderRack() {
@@ -411,7 +475,8 @@ function randomizeSeq(m) {
     m.data.steps = randomMSeq(m.data.len);
     engine.send({ t: 'data', id: m.id, k: 'steps', v: m.data.steps });
   }
-  if (m.type === 'L') engine.send({ t: 'cmd', id: m.id, c: 'rseq' });
+  if (m.type === 'L' || m.type === 'T') engine.send({ t: 'cmd', id: m.id, c: 'rseq' });
+  if (m.type === 'V') { m.data.pins = randomPins(); engine.send({ t: 'data', id: m.id, k: 'pins', v: m.data.pins }); }
   refreshModule(m);
 }
 $('rand-knobs').addEventListener('click', () => { state.mods.forEach(randomizeKnobs); if (inStage()) stage.render(); });

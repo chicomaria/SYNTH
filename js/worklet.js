@@ -55,6 +55,7 @@ class Svf {
     this.x1 = 2 * v1 - this.x1;
     this.x2 = 2 * v2 - this.x2;
     this.lp = v2;
+    this.hp = x - this.k * v1 - v2;
     return v1 * this.k;
   }
 }
@@ -846,7 +847,503 @@ class ModA extends Mod {
   }
 }
 
-const TYPES = { M: ModM, D: ModD, S: ModS, L: ModL, X: ModX, N: ModN, A: ModA };
+// ============ Peças partilhadas pelos módulos novos ============
+// Reverb de mola simplificada: três combs com tempos curtos e um passa-tudo
+class Spring {
+  constructor() {
+    const sr = sampleRate;
+    this.combs = [0.0297, 0.0371, 0.0411].map((t) => ({ b: new Float32Array(Math.floor(t * sr)), i: 0, lp: 0 }));
+    this.ap = { b: new Float32Array(Math.floor(0.005 * sr)), i: 0 };
+  }
+  run(x) {
+    let y = 0;
+    for (const c of this.combs) {
+      const d = c.b[c.i];
+      c.lp += (d - c.lp) * 0.45;
+      c.b[c.i] = x + c.lp * 0.78;
+      c.i = (c.i + 1) % c.b.length;
+      y += d;
+    }
+    const a = this.ap, d = a.b[a.i], v = y / 3 + d * 0.6;
+    a.b[a.i] = v; a.i = (a.i + 1) % a.b.length;
+    return d - v * 0.6;
+  }
+}
+const triOsc = (ph) => (ph < 0.5 ? 4 * ph - 1 : 3 - 4 * ph);
+// Detetor de flanco ascendente (sinal acima de 1 V)
+class Edge {
+  constructor() { this.prev = 0; }
+  up(v) { const r = v > 1 && this.prev <= 1; this.prev = v; return r; }
+}
+
+// ============ U: utilitários (atenuversores com mistura, dois VCAs, lógica, divisor de relógio e slew) ============
+class ModU extends Mod {
+  init() { this.clk = new Edge(); this.rst = new Edge(); this.cnt = -1; this.slew = 0; }
+  block() {
+    const { s, p } = this, sr = sampleRate;
+    this.n = Math.round(1 + 15 * p.div);
+    this.riseC = 1 - Math.exp(-1 / (sr * 0.001 * Math.pow(3000, s.rise)));
+    this.fallC = 1 - Math.exp(-1 / (sr * 0.001 * Math.pow(3000, s.fall)));
+  }
+  tick() {
+    const { s, I, O, o } = this;
+    let mix = 0;
+    for (let k = 1; k <= 4; k++) {
+      const a = (s[`att${k}`] - 0.5) * 2, inn = I[`in${k}`];
+      // sem cabo, o atenuversor dá uma tensão fixa (±5 V): serve de fonte de CV manual
+      const v = this.pat(inn) ? this.inp(inn, 0) * a : a * 5;
+      o[O[`out${k}`]] = v; mix += v;
+    }
+    o[O.mix] = mix;
+    const v1 = this.inp(I.vca1In, 0) * clamp(s.vca1 + this.inp(I.vca1Cv, 0) / 8, 0, 1);
+    const v2 = this.inp(I.vca2In, 0) * clamp(s.vca2 + this.inp(I.vca2Cv, 0) / 8, 0, 1);
+    o[O.vca1Out] = v1; o[O.vca2Out] = v2;
+    const a = this.inp(I.logA, 0) > 1, b = this.inp(I.logB, 0) > 1;
+    o[O.and] = a && b ? 5 : 0; o[O.or] = a || b ? 5 : 0; o[O.xor] = a !== b ? 5 : 0;
+    if (this.rst.up(this.inp(I.reset, 0))) this.cnt = -1;
+    const c = this.inp(I.clk, 0);
+    if (this.clk.up(c)) this.cnt++;
+    const div = (n) => (this.cnt < 0 ? 0 : n === 1 ? (c > 1 ? 5 : 0) : (this.cnt % n) < n / 2 ? 5 : 0);
+    o[O.div2] = div(2); o[O.div4] = div(4); o[O.divN] = div(this.n);
+    const t = this.inp(I.slewIn, 0);
+    this.slew += (t - this.slew) * (t > this.slew ? this.riseC : this.fallC);
+    o[O.slewOut] = this.slew;
+    return ((v1 + v2) / 5) * s.vol;
+  }
+}
+
+// ============ T: sequenciador aleatório com memória (registo de deslocamento) e ritmo euclidiano ============
+const T_SCALES = [null, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], [0, 2, 4, 5, 7, 9, 11], [0, 2, 3, 5, 7, 8, 10], [0, 3, 5, 7, 10]];
+class ModT extends Mod {
+  init() {
+    this.reg = 0; this.reseed();
+    this.phase = 1; this.wasRun = false; this.clkE = new Edge(); this.rstE = new Edge();
+    this.eStep = -1; this.semis = 0; this.raw = 0; this.gateN = 0; this.eN = 0; this.clkOut = 0;
+    this.period = sampleRate / 8; this.since = 0;
+  }
+  reseed() { this.reg = Math.floor(Math.random() * 65536) | 1; }
+  cmd(m) {
+    if (m.c === 'rseq') this.reseed();
+    if (m.c === 'bit') this.reg ^= 1 << m.i;
+  }
+  status() { return [this.reg, this.len, this.eStep]; }
+  block() {
+    const { s, p, I } = this, sr = sampleRate;
+    this.inc = ((30 * Math.pow(10, s.tempo)) / 60) * 4 / sr;
+    this.len = 2 + Math.round(14 * p.len);
+    this.prob = clamp(s.change + this.inp(I.changeCv, 0) / 5, 0, 1);
+    this.range = clamp(s.range + this.inp(I.rangeCv, 0) / 5, 0, 1) * 48;
+    this.eSteps = Math.round(1 + 15 * p.eSteps);
+    this.eHits = Math.min(this.eSteps, Math.round(16 * p.eHits));
+    this.eRot = Math.round(15 * p.eRot);
+    this.running = this.pat(I.run) ? this.inp(I.run, 0) > 1 : !!p.run;
+    if (this.running && !this.wasRun) this.phase = 1;
+    this.wasRun = this.running;
+  }
+  quant(semis) {
+    const sc = T_SCALES[this.p.scale];
+    if (!sc) return semis;
+    const oct = Math.floor(semis / 12), n = semis - oct * 12;
+    let best = sc[0], d = 99;
+    for (const x of [...sc, 12]) if (Math.abs(x - n) < d) { d = Math.abs(x - n); best = x; }
+    return oct * 12 + best;
+  }
+  tick() {
+    const { s, p, I, O, o } = this;
+    let tickNow = false;
+    this.since++;
+    if (this.pat(I.clock)) {
+      if (this.clkE.up(this.inp(I.clock, 0))) { tickNow = true; if (this.since > 32) this.period = this.since; this.since = 0; }
+    } else if (this.running) {
+      this.phase += this.inc;
+      if (this.phase >= 1) { this.phase -= 1; if (this.phase >= 1) this.phase = 0; tickNow = true; this.period = 1 / this.inc; this.since = 0; }
+    }
+    if (this.rstE.up(this.inp(I.reset, 0))) this.eStep = -1;
+    if (tickNow) {
+      const L = this.len, last = (this.reg >> (L - 1)) & 1;
+      const bit = Math.random() < this.prob * this.prob ? last ^ 1 : last;
+      this.reg = ((this.reg << 1) | bit) & 0xffff;
+      const v = (this.reg & 0xff) / 255;
+      this.raw = v * 5;
+      this.semis = Math.round(v * this.range);
+      this.clkOut = 240;
+      this.eStep = (this.eStep + 1) % this.eSteps;
+      const k = (this.eStep + this.eRot) % this.eSteps;
+      if (this.eHits > 0 && ((k * this.eHits) % this.eSteps) < this.eHits) this.eN = Math.max(240, this.period * 0.25);
+    }
+    const open = this.since < this.period * (0.1 + 0.85 * s.gateLen);
+    const tr = this.inp(I.transpose, 0);
+    o[O.cv] = (p.scale ? this.quant(this.semis + Math.round(tr * 12)) / 12 : this.semis / 12 + tr) + p.oct - 1;
+    o[O.raw] = this.raw;
+    o[O.gate] = open && this.reg & 1 ? 5 : 0;
+    o[O.bit2] = open && this.reg & 2 ? 5 : 0;
+    o[O.bit4] = open && this.reg & 8 ? 5 : 0;
+    o[O.euclid] = this.eN > 0 ? 5 : 0;
+    o[O.clockOut] = this.clkOut > 0 ? 5 : 0;
+    if (this.eN > 0) this.eN--; if (this.clkOut > 0) this.clkOut--;
+    return 0;
+  }
+}
+
+// ============ G: semi-modular de dois osciladores com arpejador e mola (arquitetura do Grandmother) ============
+function shapeOsc(w, ph, dt, pw) {
+  return w === 0 ? triOsc(ph) : w === 1 ? sawOsc(ph, dt) : w === 2 ? sqOsc(ph, dt, 0.5) : sqOsc(ph, dt, pw);
+}
+class ModG extends Mod {
+  init() {
+    this.seq = new SeqCore(); this.keyGate = false; this.keyNote = 0; this.kb = -2;
+    this.ph1 = 0; this.ph2 = 0; this.lfo = 0; this.sh = 0; this.hp = 0;
+    this.env = new Adsr(); this.filter = new Ladder(); this.spring = new Spring();
+    this.arpI = -1; this.arpDir = 1;
+  }
+  cmd(m) {
+    if (m.c === 'noteOn') { this.keyNote = m.n; this.keyGate = true; this.retrig = true; }
+    if (m.c === 'noteOff') this.keyGate = false;
+  }
+  status() { return [this.seq.step]; }
+  // arpejador: toca as notas da sequência por ordem de altura, em 1 a 3 oitavas
+  arpNote() {
+    const { steps = [], len = 16 } = this.data, pool = [];
+    const base = [...new Set(steps.slice(0, len).filter((st) => st && !st.r).map((st) => st.n))].sort((a, b) => a - b);
+    for (let k = 0; k <= this.p.arpOct; k++) base.forEach((n) => pool.push(n + 12 * k));
+    if (!pool.length) return this.seq.note;
+    const mode = this.p.arp;
+    if (mode === 3) this.arpI = Math.floor(Math.random() * pool.length);
+    else if (mode === 1) this.arpI = (this.arpI + 1) % pool.length;
+    else {
+      if (pool.length === 1) this.arpI = 0;
+      else {
+        let nx = this.arpI + this.arpDir;
+        if (nx >= pool.length || nx < 0) { this.arpDir = -this.arpDir; nx = this.arpI + this.arpDir; }
+        this.arpI = clamp(nx, 0, pool.length - 1);
+      }
+    }
+    return pool[this.arpI];
+  }
+  block() {
+    const { s, p, I } = this, sr = sampleRate;
+    this.seq.block(s.tempo, s.gateLen, this.pat(I.clock), this.pat(I.run) ? this.inp(I.run, 0) > 1 : !!p.run);
+    this.glideC = s.glide < 0.01 ? 1 : 1 - Math.exp(-3 / (sr * 0.005 * Math.pow(400, s.glide)));
+    this.env.set(s.attack, s.decay, s.sustain, s.release);
+    this.lfoInc = (0.05 * Math.pow(1000, s.lfoRate) * Math.pow(2, clamp(this.inp(I.lfoRate, 0), -5, 5))) / sr;
+    this.cutBase = 20 * Math.pow(1000, s.cutoff);
+    this.hpC = 1 - Math.exp((-TWO_PI * 20 * Math.pow(100, s.hpCut)) / sr);
+  }
+  tick() {
+    const { s, p, I, O, o } = this, sr = sampleRate;
+    const fresh = this.seq.tick(this.inp(I.clock, 0), this.inp(I.reset, 0), this.data);
+    if (fresh && p.arp) this.arpN = this.arpNote();
+    if (!p.arp) this.arpI = -1;
+    const note = this.keyGate ? this.keyNote : p.arp && this.arpN !== undefined ? this.arpN : this.seq.note;
+    const gate = this.keyGate || this.seq.gate || this.inp(I.gate, 0) > 1;
+    const retrig = fresh || this.retrig; this.retrig = false;
+    this.kb += (note / 12 - 2 - this.kb) * this.glideC;
+
+    this.lfo += this.lfoInc;
+    if (this.lfo >= 1) { this.lfo -= Math.floor(this.lfo); this.sh = Math.random() * 2 - 1; }
+    const l = this.lfo, lw = p.lfoWave;
+    const tri = triOsc(l), sq = l < 0.5 ? 1 : -1;
+    const lfo = lw === 0 ? tri : lw === 1 ? sq : lw === 2 ? 1 - 2 * l : lw === 3 ? 2 * l - 1 : this.sh;
+
+    const env = this.env.tick(gate, retrig);
+    const base = this.kb + this.inp(I.voct, 0) + lfo * s.modPitch * 0.5;
+    const f1 = clamp(261.63 * Math.pow(2, clamp(base + p.osc1Oct - 2, -12, 8)), 0, sr * 0.45);
+    const f2 = clamp(261.63 * Math.pow(2, clamp(base + p.osc2Oct - 2 + (s.osc2Freq - 0.5) * (14 / 12) + this.inp(I.osc2Cv, 0), -12, 8)), 0, sr * 0.45);
+    const dt1 = f1 / sr, dt2 = f2 / sr;
+    this.ph1 += dt1;
+    let wrap = false;
+    if (this.ph1 >= 1) { this.ph1 -= 1; wrap = true; }
+    this.ph2 += dt2;
+    if (this.ph2 >= 1) this.ph2 -= 1;
+    if (wrap && p.sync) this.ph2 = this.ph1 * (dt2 / dt1);
+    const pw = clamp(0.12 + lfo * s.modPw * 0.35 + this.inp(I.pwm, 0) / 12, 0.03, 0.97);
+    const v1 = shapeOsc(p.osc1Wave, this.ph1, dt1, pw), v2 = shapeOsc(p.osc2Wave, this.ph2, dt2, pw);
+    const noise = Math.random() * 2 - 1;
+    let pre = v1 * s.osc1Lvl + v2 * s.osc2Lvl + noise * s.noiseLvl + this.inp(I.ext, 0) / 5;
+    this.hp += (pre - this.hp) * this.hpC;
+    if (s.hpCut > 0.01) pre -= this.hp;
+    const kbT = [0, 0.5, 1][p.kbAmt];
+    const mod = (s.egAmt - 0.5) * 2 * env * 8 + (this.kb + 2) * kbT + lfo * s.modCut * 3 + this.inp(I.cutoff, 0);
+    const k = clamp(s.res + this.inp(I.res, 0) / 5, 0, 1) * 4.3;
+    const vcf = this.filter.run(pre * 0.7, this.cutBase * Math.pow(2, clamp(mod, -12, 12)), k, 0);
+    const vca = vcf * clamp((p.vcaMode ? 1 : env) + this.inp(I.vcaCv, 0) / 8, 0, 1);
+    const wet = this.spring.run(this.pat(I.reverbIn) ? this.inp(I.reverbIn, 0) / 5 : vca);
+    const out = vca * (1 - s.reverb * 0.5) + wet * s.reverb * 1.2;
+    o[O.vco1] = v1 * 5; o[O.vco2] = v2 * 5; o[O.noise] = noise * 5; o[O.vcf] = vcf * 5; o[O.env] = env * 8;
+    o[O.lfoTri] = tri * 5; o[O.lfoSq] = sq * 5; o[O.sh] = this.sh * 5; o[O.kb] = this.kb;
+    o[O.gateOut] = gate ? 5 : 0; o[O.clockOut] = this.seq.clock(); o[O.spring] = wet * 5; o[O.vca] = out * 5;
+    return out * s.vol;
+  }
+}
+
+// ============ B: west coast (oscilador complexo, oscilador de modulação, pulser, 5 passos e low pass gates) ============
+// Low pass gate: o "vactrol" abre depressa e fecha devagar; controla o ganho, o corte ou os dois
+class Lpg {
+  constructor() { this.c = 0; this.a = 0; this.b = 0; }
+  run(x, ctl, mode) {
+    const t = clamp(ctl, 0, 1.2);
+    this.c += (t - this.c) * (t > this.c ? 0.006 : 0.00025 + 0.0006 * this.c);
+    const c = this.c;
+    const g = mode === 2 ? 1 : c;
+    const k = mode === 0 ? 1 : 1 - Math.exp((-TWO_PI * 30 * Math.pow(500, clamp(c, 0, 1))) / sampleRate);
+    this.a += (x - this.a) * k; this.b += (this.a - this.b) * k;
+    return (mode === 0 ? x : this.b) * g;
+  }
+}
+class ModB extends Mod {
+  init() {
+    this.phase = 1; this.wasRun = false; this.clkE = new Edge(); this.rstE = new Edge(); this.envE = new Edge();
+    this.step = 0; this.pulseN = 0; this.env = 0; this.st = 0; this.holdN = 0;
+    this.mph = 0; this.ph = 0; this.lpg1 = new Lpg(); this.lpg2 = new Lpg();
+  }
+  status() { return [this.step]; }
+  block() {
+    const { s, p, I } = this, sr = sampleRate;
+    // período: de 20 s (knob a zero) a 50 ms (no máximo)
+    this.inc = (0.05 * Math.pow(400, s.period)) / sr;
+    this.atk = 1 / (sr * 0.001 * Math.pow(3000, s.attack));
+    this.holdLen = sr * 0.002 * Math.pow(1000, s.hold);
+    this.decC = Math.exp(-4.6 / (sr * 0.003 * Math.pow(2000, s.decay)));
+    this.nSteps = 3 + p.steps;
+    this.running = this.pat(I.run) ? this.inp(I.run, 0) > 1 : !!p.run;
+    if (this.running && !this.wasRun) this.phase = 1;
+    this.wasRun = this.running;
+  }
+  fireEnv() { this.st = 1; }
+  tick() {
+    const { s, p, I, O, o } = this, sr = sampleRate;
+    let pulse = false;
+    if (this.pat(I.clock)) pulse = this.clkE.up(this.inp(I.clock, 0));
+    else if (this.running) {
+      this.phase += this.inc;
+      if (this.phase >= 1) { this.phase -= 1; if (this.phase >= 1) this.phase = 0; pulse = true; }
+    }
+    if (this.rstE.up(this.inp(I.reset, 0))) this.step = -1;
+    if (pulse) { this.step = (this.step + 1) % this.nSteps; this.pulseN = Math.floor(sr * 0.008); this.fireEnv(); }
+    if (this.envE.up(this.inp(I.envTrig, 0))) this.fireEnv();
+    // envelope: ataque, sustentação (tempo) e decay; SELF repete-se sozinho
+    if (this.st === 1) { this.env += this.atk; if (this.env >= 1) { this.env = 1; this.st = 2; this.holdN = this.holdLen; } }
+    else if (this.st === 2) { if (--this.holdN <= 0) this.st = 3; }
+    else if (this.st === 3) { this.env *= this.decC; if (this.env < 0.001) { this.env = 0; this.st = p.envMode ? 1 : 0; } }
+    else if (p.envMode && this.st === 0) this.st = 1;
+
+    const stp = Math.max(this.step, 0);
+    const sv = (p[`s${stp + 1}`] - 0.5) * 2;
+    let seqV = sv * s.seqAmt * 2;
+    if (p.quant) seqV = Math.round(seqV * 12) / 12;
+
+    const mf = (p.modRange ? 0.02 * Math.pow(2, s.modFreq * 10) : 20 * Math.pow(2, s.modFreq * 10)) * Math.pow(2, clamp(sv * s.modSeq * 2 + this.inp(I.modCv, 0), -8, 8));
+    const mdt = clamp(mf, 0, sr * 0.45) / sr;
+    this.mph += mdt; if (this.mph >= 1) this.mph -= 1;
+    const mw = p.modWave, mod = mw === 0 ? sawOsc(this.mph, mdt) : mw === 1 ? sqOsc(this.mph, mdt, 0.5) : triOsc(this.mph);
+
+    const index = clamp(s.index + this.inp(I.indexCv, 0) / 5, 0, 1);
+    const pitch = (s.pitch - 0.5) * 6 + seqV + this.inp(I.pitchCv, 0);
+    const f = Math.abs(261.63 * Math.pow(2, clamp(pitch, -8, 6)) * (1 + index * index * 8 * mod));
+    this.ph += clamp(f, 0, sr * 0.45) / sr; if (this.ph >= 1) this.ph -= 1;
+    const sine = Math.sin(TWO_PI * this.ph);
+    const fold = clamp(s.timbre + s.timbreMod * mod * 0.5 + s.timbreEnv * this.env + this.inp(I.timbreCv, 0) / 5, 0, 1.5);
+    const complex = Math.sin((sine + (s.sym - 0.5) * 0.8) * (1 + fold * 5) * 1.5708);
+
+    const pulseG = this.pulseN > 0 ? 1 : 0; if (this.pulseN > 0) this.pulseN--;
+    const in1 = this.pat(I.lpg1In) ? this.inp(I.lpg1In, 0) / 5 : mod;
+    const in2 = this.pat(I.lpg2In) ? this.inp(I.lpg2In, 0) / 5 : complex;
+    const l1 = this.lpg1.run(in1, pulseG + this.inp(I.lpg1Cv, 0) / 5, p.lpg1Mode) * s.lpg1;
+    const l2 = this.lpg2.run(in2, this.env + this.inp(I.lpg2Cv, 0) / 5, p.lpg2Mode) * s.lpg2;
+    const out = Math.tanh((l1 + l2) * 0.9);
+    o[O.complex] = complex * 5; o[O.mod] = mod * 5; o[O.lpg1Out] = l1 * 5; o[O.lpg2Out] = l2 * 5;
+    o[O.env] = this.env * 8; o[O.pulse] = pulseG * 5; o[O.seq] = seqV; o[O.out] = out * 5;
+    return out * s.vol;
+  }
+}
+
+// ============ K: dois filtros agressivos, dois envelopes e processador de sinal externo (arquitetura do MS-20) ============
+class ModK extends Mod {
+  init() {
+    this.seq = new SeqCore(); this.keyGate = false; this.keyNote = 0; this.kb = -2; this.retrig = false;
+    this.ph1 = 0; this.ph2 = 0; this.mg = 0; this.pink = 0; this.sh = 0; this.shE = new Edge(); this.mgPrev = 0;
+    this.eg2 = new Adsr(); this.e1 = 0; this.e1St = 0; this.e1Wait = 0; this.prevGate = false;
+    this.hpf = new Svf(); this.lpf = new Svf();
+    this.eHp = 0; this.eLp = 0; this.eEnv = 0; this.tA = 0; this.tB = 0; this.tEnv = 0; this.zc = 0; this.zPos = false; this.fv = 0; this.fvT = 0;
+  }
+  cmd(m) {
+    if (m.c === 'noteOn') { this.keyNote = m.n; this.keyGate = true; this.retrig = true; }
+    if (m.c === 'noteOff') this.keyGate = false;
+  }
+  status() { return [this.seq.step]; }
+  block() {
+    const { s, p, I } = this, sr = sampleRate;
+    this.seq.block(s.tempo, s.gateLen, this.pat(I.clock), this.pat(I.run) ? this.inp(I.run, 0) > 1 : !!p.run);
+    this.portaC = s.porta < 0.01 ? 1 : 1 - Math.exp(-3 / (sr * 0.005 * Math.pow(400, s.porta)));
+    this.eg2.set(s.attack, s.decay, s.sustain, s.release);
+    this.e1Delay = sr * 0.002 * Math.pow(1000, s.e1Delay) * (s.e1Delay > 0.01 ? 1 : 0);
+    this.e1Atk = 1 / (sr * 0.001 * Math.pow(5000, s.e1Attack));
+    this.e1Rel = Math.exp(-4.6 / (sr * 0.002 * Math.pow(5000, s.e1Release)));
+    this.mgInc = (0.05 * Math.pow(1000, s.mgRate)) / sr;
+    this.espLoC = 1 - Math.exp((-TWO_PI * 30 * Math.pow(100, s.espLo)) / sr);
+    this.espHiC = 1 - Math.exp((-TWO_PI * 200 * Math.pow(80, s.espHi)) / sr);
+  }
+  tick() {
+    const { s, p, I, O, o } = this, sr = sampleRate;
+    const fresh = this.seq.tick(this.inp(I.clock, 0), this.inp(I.reset, 0), this.data);
+    const note = this.keyGate ? this.keyNote : this.seq.note;
+    const gate = this.keyGate || this.seq.gate || this.inp(I.gate, 0) > 1;
+    const retrig = fresh || this.retrig || this.inp(I.trig, 0) > 1; this.retrig = false;
+    this.kb += (note / 12 - 2 - this.kb) * this.portaC;
+
+    // MG: triângulo com forma variável (rampa ↔ triângulo ↔ dente de serra) e quadrada
+    this.mg += this.mgInc; let mgWrap = false;
+    if (this.mg >= 1) { this.mg -= Math.floor(this.mg); mgWrap = true; }
+    const sh = clamp(s.mgShape, 0.02, 0.98), ph = this.mg;
+    const mgTri = ph < sh ? (ph / sh) * 2 - 1 : 1 - ((ph - sh) / (1 - sh)) * 2;
+    const mgSq = ph < 0.5 ? 1 : -1;
+
+    // EG 1: delay, attack e release; EG 2: hold/ADSR
+    if ((gate && !this.prevGate) || (gate && retrig)) { this.e1St = 1; this.e1Wait = this.e1Delay; }
+    if (!gate && this.prevGate) this.e1St = 3;
+    this.prevGate = gate;
+    if (this.e1St === 1) { if (this.e1Wait > 0) this.e1Wait--; else { this.e1 += this.e1Atk; if (this.e1 >= 1) { this.e1 = 1; this.e1St = 2; } } }
+    else if (this.e1St === 3) { this.e1 *= this.e1Rel; if (this.e1 < 1e-5) { this.e1 = 0; this.e1St = 0; } }
+    const eg2 = this.eg2.tick(gate, retrig);
+
+    const white = Math.random() * 2 - 1;
+    this.pink += (white - this.pink) * 0.1;
+    const pink = this.pink * 2.8;
+    const shClkPatched = this.pat(I.shClk);
+    if (shClkPatched ? this.shE.up(this.inp(I.shClk, 0)) : mgWrap) this.sh = this.pat(I.shIn) ? this.inp(I.shIn, 0) / 5 : white;
+
+    // ESP: banda, envelope, gate e conversão de frequência em tensão (1 V/oitava)
+    const ein = (this.inp(I.espIn, 0) / 5) * (0.2 + s.espGain * 8);
+    this.eHp += (ein - this.eHp) * this.espLoC;
+    this.eLp += (ein - this.eHp - this.eLp) * this.espHiC;
+    const bp = Math.tanh(this.eLp);
+    this.eEnv += (Math.abs(bp) - this.eEnv) * (Math.abs(bp) > this.eEnv ? 0.01 : 0.0005);
+    const espGate = this.eEnv > s.espThr * 0.6 + 0.02;
+    // F/V: filtra mais (dois polos no HIGH CUT) para ficar com a fundamental e conta os cruzamentos com histerese
+    this.tA += (bp - this.tA) * this.espHiC; this.tB += (this.tA - this.tB) * this.espHiC;
+    this.tEnv += (Math.abs(this.tB) - this.tEnv) * (Math.abs(this.tB) > this.tEnv ? 0.01 : 0.0005);
+    const hyst = Math.max(0.005, this.tEnv * 0.5);
+    this.zc++;
+    if (!this.zPos && this.tB > hyst) {
+      this.zPos = true;
+      if (this.zc > 8 && espGate) this.fvT = Math.log2(sr / this.zc / 261.63);
+      this.zc = 0;
+    } else if (this.zPos && this.tB < -hyst) this.zPos = false;
+    if (this.zc > sr * 0.1) this.zc = sr * 0.1;
+    this.fv += (this.fvT - this.fv) * 0.002;
+
+    const base = this.kb + this.inp(I.voct, 0) + mgTri * s.mgPitch * 0.5 + (s.egPitch - 0.5) * 2 * this.e1;
+    const f1 = clamp(261.63 * Math.pow(2, clamp(base + p.v1Scale - 2, -12, 8)), 0, sr * 0.45);
+    const f2 = clamp(261.63 * Math.pow(2, clamp(base + p.v2Scale - 2 + (s.v2Pitch - 0.5) * 2 + this.inp(I.v2Cv, 0), -12, 8)), 0, sr * 0.45);
+    const dt1 = f1 / sr, dt2 = f2 / sr;
+    this.ph1 += dt1; if (this.ph1 >= 1) this.ph1 -= 1;
+    this.ph2 += dt2; if (this.ph2 >= 1) this.ph2 -= 1;
+    const w1 = p.v1Wave, w2 = p.v2Wave;
+    const pulse1 = sqOsc(this.ph1, dt1, clamp(0.5 - s.pw * 0.45, 0.04, 0.5));
+    const v1 = w1 === 0 ? triOsc(this.ph1) : w1 === 1 ? sawOsc(this.ph1, dt1) : w1 === 2 ? pulse1 : white;
+    const sq2 = sqOsc(this.ph2, dt2, 0.5);
+    const v2 = w2 === 0 ? sawOsc(this.ph2, dt2) : w2 === 1 ? sq2 : w2 === 2 ? sqOsc(this.ph2, dt2, 0.1) : pulse1 * sq2;
+
+    // HPF → LPF, com saturação e ressonância que grita no máximo
+    const pre = Math.tanh((v1 * s.v1Lvl + v2 * s.v2Lvl + this.inp(I.ext, 0) / 5) * 0.9);
+    const hpF = 20 * Math.pow(500, s.hpCut) * Math.pow(2, clamp((s.hpEg - 0.5) * 12 * eg2 + mgTri * s.hpMg * 4 + this.inp(I.hpCv, 0), -10, 10));
+    this.hpf.set(hpF, 0.5 + s.hpPeak * s.hpPeak * 20);
+    this.hpf.run(pre);
+    const hp = Math.tanh(this.hpf.hp * (1 + s.hpPeak));
+    const lpF = 20 * Math.pow(1000, s.lpCut) * Math.pow(2, clamp((s.lpEg - 0.5) * 16 * eg2 + mgTri * s.lpMg * 4 + this.inp(I.lpCv, 0), -10, 10));
+    this.lpf.set(lpF, 0.5 + s.lpPeak * s.lpPeak * 30);
+    this.lpf.run(hp);
+    const lp = Math.tanh(this.lpf.lp * (1 + s.lpPeak * 1.5));
+    const out = lp * clamp(eg2 + this.inp(I.vcaCv, 0) / 8, 0, 1);
+
+    o[O.vco1] = v1 * 5; o[O.vco2] = v2 * 5; o[O.hpOut] = hp * 5; o[O.lpOut] = lp * 5;
+    o[O.mgTri] = mgTri * 5; o[O.mgSq] = mgSq * 5; o[O.eg1] = this.e1 * 8; o[O.eg2] = eg2 * 8;
+    o[O.white] = white * 5; o[O.pink] = clamp(pink, -1.5, 1.5) * 5; o[O.sh] = this.sh * 5;
+    o[O.espBp] = bp * 5; o[O.espEnv] = this.eEnv * 16; o[O.espCv] = this.fv; o[O.espGate] = espGate ? 5 : 0;
+    o[O.kb] = this.kb; o[O.gateOut] = gate ? 5 : 0; o[O.clockOut] = this.seq.clock(); o[O.vca] = out * 5;
+    return out * s.vol;
+  }
+}
+
+// ============ V: matriz de pinos 16×16 (arquitetura do VCS3) ============
+// Fontes (linhas) e destinos (colunas) seguem V_ROWS e V_COLS em defs.js; os sinais circulam normalizados (±1).
+class ModV extends Mod {
+  init() {
+    this.ph = [0, 0, 0]; this.pink = 0; this.brown = 0; this.filter = new Ladder(); this.spring = new Spring();
+    this.trap = 0; this.tSt = 0; this.tN = 0; this.trigE = new Edge(); this.fire = false;
+    this.src = new Float64Array(16); this.dst = new Float64Array(16); this.prev = new Float64Array(16);
+    this.compile();
+  }
+  setData(k, v) { this.data[k] = v; if (k === 'pins') this.compile(); }
+  compile() {
+    const pins = this.data.pins || {};
+    this.pins = Object.entries(pins).map(([key, lvl]) => { const [r, c] = key.split(',').map(Number); return [r, c, lvl]; })
+      .filter(([r, c, l]) => r >= 0 && r < 16 && c >= 0 && c < 16 && l > 0);
+    this.used = new Uint8Array(16);
+    for (const [, c] of this.pins) this.used[c] = 1;
+  }
+  cmd(m) { if (m.c === 'trig') this.fire = true; }
+  status() { return [this.tSt]; }
+  block() {
+    const { s } = this, sr = sampleRate;
+    const t = (v) => sr * 0.002 * Math.pow(2500, v);
+    this.tA = 1 / t(s.envA); this.tOn = t(s.envOn); this.tD = t(clamp(s.envD + this.prev[12] * 0.5, 0, 1)); this.tOff = t(s.envOff);
+    this.manual = s.envOff > 0.98;
+  }
+  tick() {
+    const { s, I, O, o, src, dst, prev } = this, sr = sampleRate;
+    // trapézio: attack → on → decay → off; com OFF no máximo só dispara com o botão ou com a entrada
+    if (this.trigE.up(this.inp(I.trig, 0)) || this.fire) { this.tSt = 1; this.fire = false; }
+    if (this.tSt === 0 && !this.manual) this.tSt = 1;
+    if (this.tSt === 1) { this.trap += this.tA; if (this.trap >= 1) { this.trap = 1; this.tSt = 2; this.tN = this.tOn; } }
+    else if (this.tSt === 2) { if (--this.tN <= 0) this.tSt = 3; }
+    else if (this.tSt === 3) { this.trap -= 1 / this.tD; if (this.trap <= 0) { this.trap = 0; this.tSt = this.manual ? 0 : 4; this.tN = this.tOff; } }
+    else if (this.tSt === 4) { if (--this.tN <= 0) this.tSt = 1; }
+
+    const voct = this.inp(I.voct, 0);
+    const f1 = 261.63 * Math.pow(2, clamp((s.o1Freq - 0.5) * 10 + voct + prev[7] * 2, -12, 7));
+    const f2 = 261.63 * Math.pow(2, clamp((s.o2Freq - 0.5) * 10 + voct + prev[8] * 2, -12, 7));
+    const f3 = 0.05 * Math.pow(2, clamp(s.o3Freq * 14 + prev[9] * 2, -4, 16));
+    const ph = this.ph, dts = [f1, f2, f3].map((f) => clamp(f, 0, sr * 0.45) / sr);
+    for (let k = 0; k < 3; k++) { ph[k] += dts[k]; if (ph[k] >= 1) ph[k] -= 1; }
+    // OSC 1: o shape deforma o seno (de meia onda a seno puro); OSC 2 e 3: largura do pulso e simetria do triângulo
+    const sk = Math.pow(2, (s.o1Shape - 0.5) * 3), p1 = Math.pow(ph[0], sk);
+    const pw2 = clamp(s.o2Shape + prev[14] * 0.45, 0.04, 0.96), pw3 = clamp(s.o3Shape, 0.04, 0.96);
+    const skewTri = (x, w) => (x < w ? (x / w) * 2 - 1 : 1 - ((x - w) / (1 - w)) * 2);
+    const white = Math.random() * 2 - 1;
+    this.pink += (white - this.pink) * 0.12; this.brown += (white - this.brown) * 0.015;
+    const c = s.noiseColor, noise = c < 0.5 ? white * (1 - 2 * c) + this.pink * 5 * c : this.pink * 2.5 * (2 - 2 * c) + this.brown * 12 * (2 * c - 1);
+
+    src[0] = Math.sin(TWO_PI * p1) * s.o1Sine; src[1] = sawOsc(ph[0], dts[0]) * s.o1Saw;
+    src[2] = sqOsc(ph[1], dts[1], pw2) * s.o2Pulse; src[3] = skewTri(ph[1], pw2) * s.o2Tri;
+    src[4] = sqOsc(ph[2], dts[2], pw3) * s.o3Pulse; src[5] = skewTri(ph[2], pw3) * s.o3Tri;
+    src[6] = clamp(noise, -1.5, 1.5) * s.noiseLvl;
+    src[7] = this.inp(I.in1, 0) / 5; src[8] = this.inp(I.in2, 0) / 5;
+    // fontes que dependem de destinos usam o valor da amostra anterior
+    const fc = 20 * Math.pow(1000, s.fFreq) * Math.pow(2, clamp(prev[10] * 4 + this.inp(I.fCv, 0), -10, 10));
+    const k = clamp(s.fRes + prev[11] * 0.5, 0, 1) * 4.3;
+    const filt = this.filter.run(prev[6] * 0.8, fc, k, 0);
+    src[9] = filt * s.fLvl;
+    src[10] = this.trap * s.trapLvl;
+    src[11] = prev[5] * this.trap * s.envSig;
+    src[12] = prev[2] * prev[3] * s.ringLvl * 2;
+    src[13] = this.spring.run(prev[4]) * s.revLvl;
+    src[14] = (s.joyX - 0.5) * 2; src[15] = (s.joyY - 0.5) * 2;
+
+    dst.fill(0);
+    for (const [r, col, lvl] of this.pins) dst[col] += src[r] * lvl;
+    prev.set(dst);
+    const gain = this.used[13] ? clamp(dst[13], 0, 1.5) : 1;
+    const out1 = Math.tanh(dst[0]) * s.out1 * gain, out2 = Math.tanh(dst[1]) * s.out2 * gain;
+    const out = (out1 + out2) * 0.6;
+    o[O.out1] = out1 * 5; o[O.out2] = out2 * 5; o[O.filter] = filt * 5; o[O.trap] = this.trap * 8;
+    o[O.envSig] = src[11] * 5; o[O.ring] = src[12] * 5; o[O.osc3] = skewTri(ph[2], pw3) * 5; o[O.noise] = clamp(noise, -1.5, 1.5) * 5;
+    o[O.matrix] = dst[15] * 5;
+    return out * s.vol;
+  }
+}
+
+const TYPES = { M: ModM, D: ModD, S: ModS, L: ModL, X: ModX, N: ModN, A: ModA, U: ModU, T: ModT, G: ModG, B: ModB, K: ModK, V: ModV };
 
 class PulsoProcessor extends AudioWorkletProcessor {
   constructor() {

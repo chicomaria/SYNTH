@@ -153,6 +153,17 @@ button:focus-visible, .knob-dial:focus-visible { outline: 2px solid var(--accent
 .bits { display: flex; align-items: center; gap: 3px; margin-top: 4px; }
 .bit { width: 22px; height: 16px; padding: 0; border-radius: 4px; }
 .bit.playing { border-color: var(--led); box-shadow: 0 0 6px var(--led); }
+span.bit { display: inline-block; border: 1px solid var(--line); box-sizing: border-box; }
+span.bit.on { background: var(--accent); border-color: var(--accent); }
+.bits { flex-wrap: wrap; }
+.bit.dim { opacity: 0.35; }
+.vgrid { display: grid; grid-template-columns: 74px repeat(16, minmax(14px, 1fr)); gap: 2px; align-items: end; overflow-x: auto; margin-top: 4px; }
+.vgrid .vcol { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 8px; color: var(--muted); text-align: left; height: 62px; justify-self: center; }
+.vgrid .vrow { font-size: 8px; color: var(--muted); text-align: right; padding-right: 4px; align-self: center; white-space: nowrap; }
+.vgrid .vcorner { font-size: 8px; color: var(--muted); align-self: end; }
+.pin { width: 16px; height: 16px; padding: 0; border-radius: 50%; min-width: 0; justify-self: center; }
+.pin.full { background: var(--accent); border-color: var(--accent); }
+.pin.half { background: color-mix(in srgb, var(--accent) 40%, transparent); border-color: var(--accent); }
 
 @media (max-width: 560px) {
   .mod-body { flex-direction: column; }

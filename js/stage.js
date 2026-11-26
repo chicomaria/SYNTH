@@ -3,9 +3,9 @@
 // Arrastar o núcleo de um módulo para junto de outro cria cabos entre eles (mais perto, mais cabos).
 // O ícone de sequência gera e deforma a sequência do módulo (densidade e alcance).
 
-import { TYPES, FX_CONTROLS } from './defs.js?v=12';
+import { TYPES, FX_CONTROLS } from './defs.js?v=13';
 
-const HUE = { M: 30, D: 340, S: 140, L: 200, X: 280, N: 10, A: 100, FX: 55 };
+const HUE = { M: 30, D: 340, S: 140, L: 200, X: 280, N: 10, A: 100, U: 220, T: 170, G: 20, B: 310, K: 0, V: 250, FX: 55 };
 const F = 22; // alcance do ícone dentro do campo, em px
 const ICON = 38, CORE = 64, FIELD = 2 * F + ICON, SPACING = 90;
 const LINK = [120, 180, 240]; // distância entre núcleos para 3, 2 e 1 cabos
@@ -125,6 +125,68 @@ const SPEC = {
     ...MIXICONS,
     A('run', 'Tocar', 'run', 120, null, null, { run: true }),
   ],
+  U: [
+    A('att', 'Atenuadores 1-2', 'mix', 220, 'att1', 'att2'),
+    A('att2', 'Atenuadores 3-4', 'mix', 240, 'att3', 'att4'),
+    A('vca', 'VCAs', 'env', 140, 'vca1', 'vca2'),
+    A('slew', 'Slew', 'filter', 200, 'rise', 'fall'),
+    ...MIXICONS,
+  ],
+  T: [
+    A('reg', 'Registo', 'seq', 330, 'change', 'range'),
+    A('len', 'Comprimento', 'bands', 170, 'len', 'gateLen'),
+    A('euc', 'Euclidiano', 'tempo', 100, 'eHits', 'eRot'),
+    A('tempo', 'Tempo', 'tempo', 60, 'tempo', 'eSteps'),
+    A('seq', 'Padrão', 'seq', 300, null, null, { seq: true, xl: 'mudança', yl: 'alcance' }),
+    A('wave', 'Escala', 'wave', 10, null, null, { cycle: ['scale'] }),
+    A('run', 'Tocar', 'run', 120, null, null, { run: true }),
+  ],
+  G: [
+    A('osc', 'Osciladores', 'osc', 30, 'osc2Freq', 'osc2Lvl'),
+    A('vcf', 'Filtro', 'filter', 200, 'cutoff', 'res'),
+    A('lfo', 'Modulação', 'lfo', 280, 'lfoRate', ['modCut', 'modPw']),
+    A('env', 'Envelope', 'env', 140, 'decay', 'egAmt'),
+    A('spring', 'Mola', 'reverb', 250, 'reverb', 'hpCut'),
+    A('tempo', 'Tempo', 'tempo', 60, 'tempo', 'gateLen'),
+    A('seq', 'Sequência', 'seq', 330, null, null, { seq: true, xl: 'densidade', yl: 'alcance' }),
+    A('wave', 'Arpejador', 'wave', 10, null, null, { cycle: ['arp'] }),
+    ...MIXICONS,
+    A('run', 'Tocar', 'run', 120, null, null, { run: true }),
+  ],
+  B: [
+    A('cx', 'Complexo', 'osc', 30, 'pitch', 'timbre'),
+    A('mod', 'Modulador', 'fm', 300, 'modFreq', 'index'),
+    A('fold', 'Timbre', 'noise', 340, 'timbreMod', 'timbreEnv'),
+    A('env', 'Envelope', 'env', 140, 'decay', 'attack'),
+    A('lpg', 'Low pass gates', 'filter', 200, 'lpg1', 'lpg2'),
+    A('tempo', 'Pulser', 'tempo', 60, 'period', 'seqAmt'),
+    A('seq', 'Sequência', 'seq', 330, null, null, { seq: true, xl: 'alcance', yl: 'passos' }),
+    A('wave', 'Modo', 'wave', 10, null, null, { cycle: ['envMode'] }),
+    ...MIXICONS,
+    A('run', 'Tocar', 'run', 120, null, null, { run: true }),
+  ],
+  K: [
+    A('osc', 'Osciladores', 'osc', 30, 'v2Pitch', 'v2Lvl'),
+    A('hp', 'HPF', 'filter', 180, 'hpCut', 'hpPeak'),
+    A('lp', 'LPF', 'filter', 220, 'lpCut', 'lpPeak'),
+    A('lfo', 'MG', 'lfo', 280, 'mgRate', ['lpMg', 'mgPitch']),
+    A('env', 'Envelopes', 'env', 140, 'decay', 'lpEg'),
+    A('tempo', 'Tempo', 'tempo', 60, 'tempo', 'gateLen'),
+    A('seq', 'Sequência', 'seq', 330, null, null, { seq: true, xl: 'densidade', yl: 'alcance' }),
+    A('wave', 'Ondas', 'wave', 10, null, null, { cycle: ['v1Wave', 'v2Wave'] }),
+    ...MIXICONS,
+    A('run', 'Tocar', 'run', 120, null, null, { run: true }),
+  ],
+  V: [
+    A('osc1', 'Osc 1', 'osc', 30, 'o1Freq', 'o1Shape'),
+    A('osc2', 'Osc 2', 'osc', 50, 'o2Freq', 'o2Shape'),
+    A('osc3', 'Osc 3', 'lfo', 280, 'o3Freq', 'o3Tri'),
+    A('vcf', 'Filtro', 'filter', 200, 'fFreq', 'fRes'),
+    A('env', 'Trapézio', 'env', 140, 'envD', 'envOn'),
+    A('joy', 'Joystick', 'mix', 100, 'joyX', 'joyY'),
+    A('seq', 'Matriz', 'bands', 330, null, null, { seq: true, xl: 'pinos', yl: 'modulação' }),
+    ...MIXICONS,
+  ],
   FX: [
     A('delay', 'Delay', 'delay', 55, 'delayTime', 'delayFb'),
     A('send', 'Envios', 'reverb', 200, 'delayMix', 'reverb'),
@@ -141,6 +203,12 @@ const ROLES = {
   N: { clockOut: ['clockOut'], audioOut: ['vca', 'vcf'], cvOut: ['fEg', 'lfo', 'kb', 'aEg'], clockIn: ['clock'], audioIn: ['ext'], cvIn: ['cutoff', 'voct', 'vcaCv', 'lfoRate'] },
   A: { clockOut: ['clockOut'], audioOut: ['vca', 'ring'], cvOut: ['adsr', 'sh', 'kb', 'ar'], clockIn: ['clock'], audioIn: ['vcfIn', 'ringA'], cvIn: ['vcfFm', 'v1Fm', 'v2Pwm', 'v2Fm'] },
   X: { clockOut: [], audioOut: ['out', 'vco'], cvOut: ['env', 'lfo'], clockIn: [], audioIn: ['program', 'carrier'], cvIn: ['shiftCv', 'voct', 'lfoRate', 'band1'] },
+  U: { clockOut: ['divN'], audioOut: ['vca1Out', 'mix'], cvOut: ['out1', 'slewOut', 'out2', 'out3'], clockIn: ['clk'], audioIn: ['vca1In', 'in1'], cvIn: ['vca1Cv', 'slewIn', 'in2', 'in3'] },
+  T: { clockOut: ['euclid', 'gate'], audioOut: [], cvOut: ['cv', 'raw', 'cv', 'raw'], clockIn: ['clock'], audioIn: [], cvIn: ['transpose', 'changeCv', 'rangeCv'] },
+  G: { clockOut: ['clockOut'], audioOut: ['vca', 'vcf'], cvOut: ['env', 'lfoTri', 'kb', 'sh'], clockIn: ['clock'], audioIn: ['ext', 'reverbIn'], cvIn: ['cutoff', 'voct', 'pwm', 'lfoRate'] },
+  B: { clockOut: ['pulse'], audioOut: ['out', 'complex'], cvOut: ['env', 'seq', 'mod', 'env'], clockIn: ['clock'], audioIn: ['lpg2In', 'lpg1In'], cvIn: ['timbreCv', 'pitchCv', 'indexCv', 'modCv'] },
+  K: { clockOut: ['clockOut'], audioOut: ['vca', 'lpOut'], cvOut: ['eg2', 'mgTri', 'espCv', 'sh'], clockIn: ['clock'], audioIn: ['ext', 'espIn'], cvIn: ['lpCv', 'voct', 'hpCv', 'v2Cv'] },
+  V: { clockOut: [], audioOut: ['out1', 'filter'], cvOut: ['trap', 'osc3', 'matrix', 'noise'], clockIn: ['trig'], audioIn: ['in1', 'in2'], cvIn: ['fCv', 'voct'] },
 };
 function routes(S, T) {
   const rs = ROLES[S.type], rt = ROLES[T.type];
@@ -205,7 +273,7 @@ export function createStage(ctx) {
     const seed = hash(entry.id) + (S().seed[entry.id] || 1) * 7919;
     const r = rng(seed);
     const set = (k, v) => ctx.setParam(m, k, v);
-    if (m.type === 'M' || m.type === 'N' || m.type === 'A') {
+    if (m.type === 'M' || m.type === 'N' || m.type === 'A' || m.type === 'G' || m.type === 'K') {
       const scale = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22, 24], avail = Math.min(scale.length, 2 + Math.round(vy * 9));
       const steps = Array.from({ length: 32 }, (_, i) => {
         const a = r(), b = r();
@@ -226,6 +294,20 @@ export function createStage(ctx) {
       ['s1Sub1', 's1Sub2', 's2Sub1', 's2Sub2'].forEach((k) => set(k, r() < vy ? 1 : 0));
     } else if (m.type === 'L') {
       set('seq1Corrupt', vx * 0.8); set('seq2Corrupt', vx * 0.8); set('seq1Range', vy); set('seq2Range', vy * 0.8);
+    } else if (m.type === 'T') {
+      set('change', vx * 0.7); set('range', vy);
+    } else if (m.type === 'B') {
+      for (let n = 1; n <= 5; n++) set(`s${n}`, 0.5 + Math.round((r() * 2 - 1) * vx * 12) / 24);
+      set('steps', Math.round(vy * 2));
+    } else if (m.type === 'V') {
+      const pins = { '9,5': 1, '11,0': 1, '11,1': 1, '11,4': 0.3, '13,0': 0.3, '13,1': 0.3 };
+      const audio = [0, 1, 2, 3, 4, 6];
+      for (let k = 0; k < 1 + Math.round(vx * 3); k++) pins[`${audio[Math.floor(r() * audio.length)]},6`] = r() < 0.5 ? 1 : 0.3;
+      const mods = [3, 5, 10, 14, 15], dests = [7, 8, 9, 10, 11, 12, 14];
+      for (let k = 0; k < Math.round(vy * 6); k++) pins[`${mods[Math.floor(r() * mods.length)]},${dests[Math.floor(r() * dests.length)]}`] = r() < 0.4 ? 1 : 0.3;
+      m.data.pins = pins;
+      ctx.send({ t: 'data', id: m.id, k: 'pins', v: pins });
+      ctx.save();
     } else if (m.type === 'X') {
       const c = vx * 9, w = 0.6 + vy * 4;
       for (let k = 0; k < 10; k++) set(`b${k + 1}`, Math.max(0.05, Math.exp(-((k - c) ** 2) / (2 * w * w))));
