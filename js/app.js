@@ -1,8 +1,8 @@
-import { Engine } from './engine.js?v=11';
-import { Knob } from './knob.js?v=11';
-import { Scope } from './scope.js?v=11';
-import { createStage } from './stage.js?v=11';
-import { TYPES, FX_CONTROLS, PRESETS, CLOCK_IN, CLOCK_OUT, newModule, normMix, randomParams, randomMSeq, randomCables, noteName } from './defs.js?v=11';
+import { Engine } from './engine.js?v=12';
+import { Knob } from './knob.js?v=12';
+import { Scope } from './scope.js?v=12';
+import { createStage } from './stage.js?v=12';
+import { TYPES, FX_CONTROLS, PRESETS, CLOCK_IN, CLOCK_OUT, newModule, normMix, randomParams, randomMSeq, randomCables, noteName } from './defs.js?v=12';
 
 const STORAGE_KEY = 'pulso-rack-v3';
 const DEFAULT_VIEW = { mode: 'rack', skin: 'pulso', knobs: 'arc', layout: 'original', fit: 'fixed', fontScale: 1, knobScale: 1, vars: null, mixMin: false, scopeMin: false };
